@@ -20,4 +20,4 @@ https://benthamchang.github.io/Anomaly-Detection/Anomaly%20Detection%20Report.ht
 ## Conclusion
 
 1. Identified the most critical input materials that lead to anomaly via observing linear model's p-value.
-2. Detected problematic input materials and ranked them from high to low based on the predicted probability. 
+2. Detected problematic input materials and ranked them from high to low based on the predicted probability (anomolous tendency). 
