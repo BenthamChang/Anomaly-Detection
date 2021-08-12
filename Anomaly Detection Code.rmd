@@ -1,0 +1,2417 @@
+---
+title: "Case2 - Group1"
+author: 
+        - name: "108024522 劉軒成"
+        - name: "108024503 莊仕祺"  
+        - name: "108024466 劉倍銘"
+        - name: "108024703 陳昱瑋"           
+        - name: "108024520 林敬皓"
+        - name: "108024507 張文騰"
+date: "2021/4/27"
+output: 
+   distill::distill_article:
+    toc: true
+    toc_depth: 2
+    number_section: true
+---
+
+<style type="text/css">
+
+h1 { 
+  font-size: 40px;
+  font-family: 微軟正黑體;
+} 
+
+body{
+      font-size: 12px;
+      font-family: 微軟正黑體;
+  }
+  
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(plotly)
+library(data.table)
+library(dplyr)
+library(kableExtra)
+library(GGally)
+library(ggplot2)
+library(tidyr)
+library(gridExtra)
+library(grid)
+library(forcats)
+library(corrplot)
+library(car)
+library(sp)
+library(dendextend)
+library(circlize)
+library(ape)# for tidy table in html
+```
+
+
+# Probelm formulation
+
+## Problem 1
+
+原始問題：能否收到物料的COA時就知道inline會異常？
+
+### 資料介紹
+
+inline為反應變數、CoA為剩下變數，表示為
+$$
+\{y_i, x'_i\}_{i=1}^n
+$$
+，而$x'_i = (x_{CoA1,...,CoAp})$（p為變數總個數、n為sample size）。
+
+### 問題公式化
+
+考慮迴歸模型：
+$$
+y_i = f(x'_i; \bf{\beta}) + \epsilon_i
+$$
+可以注意到雖然把$x'_i$整個向量擺入模型之中，但不必要所有維度都被使用。
+
+而我們的目標是用Maximum likelihood estimator求出$\bf{\hat\beta}$，進而得到
+$$
+\hat{y_i} = f(x'_i; \bf{\hat{\beta}})
+$$
+再進一步從$\hat{y_i}$得到
+$$
+\hat{z_i} = \begin{cases}
+               0, \text{if} \ \hat{y_i} \in R_0\\
+               1, \text{if} \ \hat{y_i} \in R_1\\
+            \end{cases}
+$$
+$R_0$和$R_1$的選取是data driven，以下介紹：
+
+給定一個互斥的$R_0 \& R_1$會決定$S_0 \& S_1$，分別為判定是正常的集合以及判定是異常的集合，而目標是找到至少一組$R_{0j} \& R_{1j}$，使得
+$$
+\forall i \neq j,\ (1-\frac{|S_{1i} \cap S_{N}|}{|S_{1i}|}) + (\frac{|S_{0i} \cap S_{N}|}{|S_{0i}|} + \frac{|S_{1i} \cap S_{A}|}{|S_{1i}|}) \leq (1-\frac{|S_{1j} \cap S_{N}|}{|S_{1j}|}) + (\frac{|S_{0j} \cap S_{N}|}{|S_{0j}|} + \frac{|S_{1j} \cap S_{A}|}{|S_{1j}|})
+$$
+（$S_N$為真實為正常的集合、$S_A$為真實為異常的集合）。
+
+## Problem 2
+
+原始問題：每天收到這麼多批原物料的COA資料，能不能從中盲測出哪一批料會有問題？
+
+### 資料介紹
+
+CoA為所有變數，表示為
+$$
+\{x'_i\}_{i=1}^n
+$$
+，而$x'_i = (x_{CoA1,...,CoAp})$（p為變數總個數、n為sample size）。
+
+以下有兩種將問題公式化的面向，簡言之，一為計算各點離群程度，另一為分群。
+
+### 問題公式化
+
+#### I:
+
+定義一函數
+$$
+g:x'_i \mapsto g(x'_i) \in \mathbb{R}
+$$
+和一閾值$T_g$。
+
+假若
+$$
+g(x_j) \geq T
+$$
+，則判定為異常點。需要特別提醒的是$T_g$的選取要使得
+$$
+|\{x: g(x) \geq T_g, \ x \in \{x'_i\}_{i=1}^n \}| >> |\{x: g(x) < T_g, \ x \in \{x'_i\}_{i=1}^n \}| > 0
+$$
+
+當一資料點$x'_{new}$新進來，即使用以上的$g(.)$及$T_g$，同樣地判斷是否
+$$
+g(x'_{new}) \geq T
+$$
+
+#### II:
+
+定義一函數
+$$
+h:(S_i,S_j) \mapsto h(S_i,S_j) \in \mathbb{R}
+$$
+，$S_i$為一非空集合（顯然可以只有一個元素）、$h(S_i,S_j)=0,\  \text{if} \ i = j$。
+
+分群的迭代步驟如下，新的群$S_{ij} = S_i \cup S_j$，如果
+$$
+\forall i,j,k,l, \ 0<h(S_i,S_j) \leq h(S_k,S_l)
+$$
+分群直到
+$$
+\forall 1,...,m, \ |S_m|\geq|S_{m-1}|\geq...\geq|S_1|>1
+$$
+並定義異常集合$S_A$為$S_A=\bigcup_{j=1}^k S_j$和正常集合為$S_N$為$S_N=\bigcup_{j=k+1}^l S_j$，使得
+$$
+\frac{S_A}{S_A + S_N} \in (0,15\%]
+$$
+該分數在這個限制下，期望愈大愈好。
+
+當一資料點$x'_{new}$新進來，將它分進$S_N$，倘若歐式距離它最近的$s$個點（設定為一固定之奇數，建議為3個），命名該集合為$E_{x_{new}}$，
+$$
+|E_{x_{new}} \cap S_N| \geq \frac{s+1}{2}
+$$
+若非，則$x'_{new}$歸類為異常點。
+
+
+# Preliminary Data Analysis
+## Inline1
+
+### 1.CoA vs Inline scatterplot
+![](pic/inline1vsCoA.png)
+
+- IC為inline值正常的9個批次、OC代表inline出現異常的第2批次的數值
+- 可以發現在CoA 1、2、3、10、12、13上，CoA的值與Inline有線性的pattern
+
+
+### 2.CoA boxplot
+
+![](pic/inline1_box.png)
+
+- 第2批次在CoA 1、2、10、12、13的數值和其他9個批次較有差異
+
+### 3.CoA vs CoA scatterplot
+
+![](pic/inline1_CoA.png)
+
+- CoA_1、CoA_6、CoA_13兩兩變數間有線性的pattern
+- 其他變數間沒有明顯發現
+
+
+## Inline2
+### 1.CoA vs Inline scatterplot
+![](pic/inline2vsCoA.png)
+
+- IC為inline正常的9個批次、OC代表inline異常的第10、11、12批次的數值
+- 可以發現在CoA 8、19上，CoA的值與Inline有線性的pattern
+
+### 2.CoA boxplot
+
+![](pic/inline2_box.png)
+
+- 在CoA_8上有明顯數值分佈差異
+- 在進行inline1、2兩組資料判別時，上述較有差異的CoA可能會有較大的影響
+
+### 3.CoA_8 vs CoA scatterplot
+
+![](pic/inline2_CoA.png)
+
+- 這邊都是以CoA_8對其他CoA作圖，一樣可以把IC和OC區分開來，其中CoA 1、2、6、10、
+19、22和CoA_8有線性的pattern
+
+
+## Material1
+### 1.批次 vs CoA scatterplot
+![](pic/Material1.png)
+
+- 紅點代表該批次在這個CoA中數值距離平均超過兩個標準差，因此我們認定其為異常值並特別挑出
+- 此方法會挑出數值較為極端的批次，或是在較多固定值的CoA中挑出少數偏離的點
+
+
+### 2.批次 vs missing CoA scatterplot
+![](pic/Material1_NA.png)
+
+- CoA3、7為Material1缺值的變數，發現數值都判定為IC
+
+
+### 3.CoA vs CoA scatterplot
+![](pic/material1_CoA_pair.png)
+
+- 紅點代表該批次在這個雙變數中數值距離中心點超出兩個標準差
+- 從單個CoA變數中，對於CoA2、14、15、16，值幾乎都落在兩個標準差之中，但做兩變數Confidence Region後，可以找到更多OC批次
+
+### 4.Material1 abnormal barplot
+![](pic/material1_批號.png)
+
+- 此圖為利用單變數CoA偵測出的異常批號進行整理，並觀察其來自哪個CoA
+- 批號3在4個CoA都出現異常
+- 各CoA佔異常批號的比例並沒有顯著差異
+
+
+## Material2
+### 1.批次 vs CoA scatterplot
+![](pic/Material2.png)
+
+- 隨批次增加，前後的CoA數值有很大的趨勢變化
+- 從CoA_5發現：當數值分散比例接近時，兩個標準差的方法會使所有批次皆被視為正常
+- 從CoA_6發現：當CoA值為兩組固定數值時，兩個標準差的方法會將比例較少的一方視為異常值
+
+
+### 2.CoA vs CoA scatterplot
+![](pic/material2_CoA_pair.png)
+
+- 發現雙變量的結果主要跟單變量區分的差不多，像CoA6在單變量只有兩個常數，到雙變量依舊把小群的抓出為OC
+
+
+### 3.Material2 abnormal barplot
+![](pic/material2_批號.png)
+
+- 批號5、6、11在2個CoA出現異常
+- CoA_6在異常批號出現的比例較高
+
+
+## Material3
+### 1.批次 vs CoA scatterplot
+![](pic/Material3.png)
+
+- 在CoA_18中同樣出現隨批次而改變趨勢的現象
+- 在最後幾組CoA中，數值大多集中在某些特定值上
+
+
+### 2.批次 vs missing CoA scatterplot
+![](pic/Material3_NA_t.png)
+
+- 上圖為Material3缺值的CoA，發現缺的批號都不同，可以發現出現OC的批號較多出現在前段
+
+
+
+### 3.CoA vs CoA scatterplot
+![](pic/material3_CoA_pair.png)
+
+- 發現CoA25、26、27、28、29兩兩都有正相關的趨勢
+
+### 4.Material3 abnormal barplot
+![](pic/material3_批號.png)
+
+- 批號18在6個CoA出現異常，批號10、39、40在5個CoA出現異常
+- 各CoA佔異常批號的比例並沒有顯著差異
+
+## Material4
+### 1.批次 vs CoA scatterplot
+![](pic/Material4.png)
+
+- CoA_4的數值隨批次增加而下降
+- CoA_25的數值在前半段較常出現較大值，但整體來說都落在0.003左右
+- 其他CoA皆為幾組固定數值，並出現少數偏離固定值的批次
+
+### 2.Material4 abnormal barplot
+![](pic/material4_批號.png)
+
+- 批號12、55、75在4個CoA出現異常
+- CoA_9在異常批號出現的比例較高
+
+
+## Material5
+### 1.批次 vs CoA scatterplot
+![](pic/Material5.png)
+
+- CoA_1的數值隨批次出現上下的變動
+
+
+### 2.CoA vs CoA scatterplot
+![](pic/material5_CoA_pair.png)
+
+- 發現CoA_1與其他CoA搭配時，隨著時間上下變動的pattern就比較不明顯了
+
+### 3.Material5 abnormal barplot
+![](pic/material5_批號.png)
+
+- 批號5、6、11在2個CoA出現異常
+- CoA_3、CoA_5在異常批號出現的比例較高
+
+# Missing Value Treatment
+
+首先，我們先了解欲分析的 $7$ 個資料集中有缺失值的CoA是那些，以及單個CoA缺失值的
+總數佔總批次的比例，我們可以發現到：
+
+1. Inline1: 沒有缺失值
+2. Inline2: 沒有缺失值
+3. Material1: CoA_3, CoA_7 有缺失值，且都超過 $50\%$
+4. Material2: 沒有缺失值
+5. Material3: CoA_4, CoA_23, CoA_34 有缺失值，且CoA_4, CoA_34超過 $50\%$，CoA_23
+  僅 $5\%$ 左右，故我們將對其補值
+6. Material4: CoA_23 有缺失值，且超過 $50\%$
+7. Material5: 沒有缺失值
+
+![](Missing Value perc.png){width=100%}
+
+以下我們將對Material3做補值，我們採用knn以及random forest的作法，將除了CoA_4, CoA_23, CoA_34的欄位當作input變數對CoA_23做補值
+
+補值的結果如下圖所示，我們可以看到右邊的圖中紅色線的kNN似乎改變了CoA_23原始的分配，而藍色線的random forest則保留了原始的分配形狀，故我們將採用random forest對Material3的CoA_23做補值
+
+![](missing_value_plot.png){width=100%}
+
+# Anomaly Detection
+
+## Problem 1
+
+<p style="font-weight:600; font-size:30px">Linear Model</p>
+因為sample size小於變數個數，在配適線性模型之前，需要先挑選變數。此外，若考慮交乘效應，則主效應和交乘效應的變數量會遠大於sample size，因此，交乘效應的考慮將在先挑選完主效應變數後。
+
+### 挑選解釋變數
+
+採用Orthogonal Greedy Algorithm(OGA)及Forward selection，挑選至新變數使得模型中有解釋變數開始不顯著。
+OGA，又名正交貪婪演算法，為一個遞迴方法，逐次挑選重要變數。
+
+這邊是採用銀老師的方法，在OGA後加入HDIC和Trim的機制，又稱OGA三階段選模。
+第一階段為OGA挑選重要變數，初次疊代，對於所有參數空間中的變數，找一個可以使log-likelihood function的絕對值一次微分可以達到最大的變數，然後做MLE估計其$\hat\beta$。
+而後經過m$^*$次疊代後(註$^*$:疊代次數在論文中有推導)，會找到m個變數和其估計之$\hat\beta$。
+
+第二階段為HDIC，作為此一遞迴算則的停止法則。在第一階段中，每次疊代加入一個新變數，都會計算整個模型的loss值，則每加入變數後，
+loss值理想會隨之下降，直到模型加入新變數後，loss並沒有因此下降，我們就做一個HDIC的機制，讓模型選取的變數到此就停。
+
+第三階段為Trim，進一步以HDIC為工具，對算則停止前選入的變數作更細緻的篩選。
+簡單來說把第二階段找到的變數模型與loss值，當作一個baseline，而後每次從已選取的變數中，移除一個變數，與baseline做比較，因為loss是越小越好，所以當移除變數的模型的loss還比baseline還大時，代表移除的變數對模型是有影響的，所以該選入。
+最後我們可以得到OGA三階段選到的重要變數。
+
+以下為此方法的論文連結：
+
+[Orthogonal Greedy Algorithm](http://www.stat.sinica.edu.tw/Ing/IngLai2011.pdf)
+
+```{r,echo=FALSE,eval=FALSE}
+Case2_Final = sapply(Case2_Final, as.data.frame)
+Inline1 = Case2_Final$inline1
+Inline2 = Case2_Final$inline2
+
+### inline1 3,1,7
+### inline2 8,13,3
+Ohit(as.matrix(Inline1[,c(3:17)]), as.vector(Inline1$Inline), intercept = TRUE, c3 = 10)
+Ohit(as.matrix(Inline2[,c(3:29)]), as.vector(Inline2$Inline), intercept = TRUE, c3 = 10)
+```
+
+### 模型配適與診斷
+
+### Inline1
+
+由上述介紹挑選出的模型為：
+$$
+\hat{y}_{inline1} = 47.78 - 3.11 x_{CoA3} - 7.98 x_{CoA1} - 1.18 x_{CoA7} 
+$$
+
+模型的參數估計如下：
+
+![](inline1_fit.jpg){width=100%}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, out.width='50%'}
+knitr::include_graphics("inline1_rf.png")
+knitr::include_graphics("inline1_qqplot.png")
+``` 
+
+
+殘差符合常態檢定、配適值和殘差也沒有明顯pattern，所以認定該模型合適。
+
+### Inline2
+
+由上述介紹挑選出的模型為：
+$$
+\hat{y}_{inline2} = -39.56 - 0.22 x_{CoA8} - 146.15 x_{CoA13}
+$$
+
+模型的參數估計如下：
+
+![](inline2_fit.jpg){width=100%}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, out.width='50%'}
+knitr::include_graphics("inline2_rf.png")
+knitr::include_graphics("inline2_qqplot.png")
+``` 
+
+
+
+
+殘差符合常態檢定，然而，配適值小於15之下（為正常的response值域），殘差和配適值有負斜率的線性趨勢；同樣地，配適值大於20之下（為異常的response值域），殘差和配適值也有負斜率的線性趨勢，這是因為在原始資料下，解數變數落於一定區間之內，異常點的response有相同的值，正常點也雷同，這使得該模型仍有區分正常和異常的能力，但預測值卻會失準。有鑑於配適模型的目的已達成，此模型是可以使用的。
+
+### 調整判斷異常的標準
+
+這裡提供調整判斷異常閾值的方法，此方法為data driven，並且同時使得False discovery rate (FDR)最低及Accuracy最高。該方法使用Cross validation (CV)，作法如下：在解釋變數固定下、給定某個閾值，使用leave one out進行配適，並記下落下那點在該閾值下，預測結果正確與否，依序做完所有的點，算出Accuracy和1-FDR，再換下一個閾值重作。
+
+![](inline1_slr.png){width=60%}
+
+
+再以inline1的配適值與預測區間為例。可以看到單以預測值以及期望偵測任何異常的角度而言，原先給的正常區間似乎略顯寬大（唯一落在區間外的預測值是異常的點）。
+
+
+### inline1
+
+![](inline1_cv.png){width=60%}
+
+透過上述方法，將閾值定在±0.31~0.39 (藍色虛線之間) ，皆能完全區分異常批號。
+
+### inline2
+
+![](inline2_cv.png){width=60%}
+
+同樣透過上述方法，將閾值定在15~21 (藍色虛線之間) ，皆能完全區分異常批號。兩者都是因為此資料的正異常值response差異較大、sample size也較小，所以不僅閾值能容忍的區域寬大、區域內的Accuracy和1-FDR也都能各自達到1。但此現象將隨sample size變大、正異常值response靠得更近而縮小。
+
+```{r,echo=FALSE,eval=FALSE}
+reg1 = lm(Inline~CoA_3+CoA_1+CoA_7,data=Inline1)
+summary(reg1)
+pred1 = predict(reg1,newdata = Inline1, interval = 'prediction')
+pred1 <- as.data.frame(cbind(pred1,"index"=c(1:(dim(pred1)[1]))))
+
+plot(reg1$fitted.values,reg1$residuals, ylab="Residuals", xlab="Fitted Value", main="Inline1: Residuals v.s. Fitted Values")
+abline(h=0,lty=2)
+plot(reg1)
+shapiro.test(reg1$residuals)
+
+ggplot(pred1, aes(x = fit, y = index)) +
+  geom_point(size=2) +
+  geom_errorbarh(aes(xmin = lwr, xmax = upr)) +
+  geom_vline(aes(xintercept = 0.3), colour = "red", lwd = 1) + 
+  geom_vline(aes(xintercept = -0.3), colour = "red", lwd = 1) + ggtitle("Inline1") +
+  scale_y_continuous(breaks = seq(1,10)) +
+  theme_bw()
+
+
+reg2 = lm(Inline~CoA_8+CoA_13,data=Inline2)
+summary(reg2)
+pred2 = predict(reg2,newdata = Inline2, interval = 'prediction')
+pred2 <- as.data.frame(cbind(pred2,"index"=c(1:(dim(pred2)[1]))))
+
+plot(reg2)
+plot(reg2$fitted.values,reg2$residuals, ylab="Residuals", xlab="Fitted Value", main="Inline2: Residuals v.s. Fitted Values")
+abline(h=0,lty=2)
+shapiro.test(reg2$residuals)
+
+ggplot(pred2, aes(x = fit, y = index)) +
+  geom_point(size=2) +
+  geom_errorbarh(aes(xmin = lwr, xmax = upr)) +
+  geom_vline(aes(xintercept = 29), colour = "red", lwd = 1) + ggtitle("Inline2") +
+  scale_y_continuous(breaks = seq(1,12)) +
+  theme_bw()
+  
+```
+
+
+## Problem 2
+
+以下我們將提供三種不同的方法:
+
+1. Isolation Forest
+2. Hierarchical Clustering
+3. Multivariate SPC
+<br>
+<br>
+
+<p style="font-weight:600; font-size:30px">Isolation Forest</p>
+Isolation Forest是處理Anomaly Detection問題中一種經典的算法，此演算法的中心思想為對於越異常批次的CoA越容易被決策樹用**二分法**的方式分開，因此當我們採用此方法時，越先被分開的批次越可能是異常的批次。以下為詳細說明：
+
+### 方法假設 (Assumption)
+
+異常資料是少數且特別的，因此符合Problem 2中對於異常CoA的定義
+
+### 演算法作法 (Algorithm)
+
+每次做二分法都是**隨機**從 $p$ 個維度中選取 $1$ 個維度，並從那個維度的全距中**隨機**選取一個值將資料切成兩個部分(左節點與右節點)。直到一個節點只剩一個批次後，我們可以去計算他的路徑長度 $h(x)$，路徑長度越短代表此資料點(批次)越為異常
+
+以下為釋例：
+
+![](Isolation_forest_two_figs.png){width=100%}
+
+從以上圖我們可以看到，$x_o$ 比 $x_i$ 更為特別，因此itree也用更少的直線(切分)就將 $x_o$ 分到單一個只包含他的區域(節點)，分別對應的路徑長度為 $h(x_0) = 4$、$h(x_1) = 11$
+
+### 路徑長度 $h(x)$
+
+我們這次再以itree的圖像來解釋：
+
+![](isolation_tree_ex.png){width=100%}
+
+以上為一棵itree的示意圖，$a, b, c, d$為資料點(批次)，我們可以看到這棵樹總共做了 $3$ 次切分，而 $d$ 的路徑長為 $1$ 最為異常，$b,c$為最晚切分出去，因此可能是比較正常的資料點(批次)
+
+### 建造森林 (Bagging)
+
+當我們了解如何建構一棵樹後，我們可以決定總共要種幾棵樹 $(n)$，且每棵樹要涵蓋多少的樣本(論文建議 $256$ 個取後放回樣本)，並透過平均路徑長的方式來決定每個資料點(批次)的異常程度
+
+### 異常分數 (Anomaly Score)
+
+最後我們將平均路徑長轉換成異常分數以將其壓縮至 $0,1$ 之間，其轉換的方式是透過以下公式：
+
+$$
+s(x,n) = 2^{-E(h(x))/c(n)}
+$$
+其中 $c(n)$ 是給定 $n$ 下的平均 $h(x)$
+
+### 決策法則
+
+當 $s(x,n)$ 越接近 $1$ 越可能為異常的資料點(批次)，我們可以主觀決定一個cutpoint $k$，只要 $s(x,n) \geq k$ 即判斷該 $x$ 為異常點
+
+### Problem 2 - Iforest Solution
+
+我們將cutpoint $k$ 設定為 $85$ 分位點的 $s(x,n)$ 且令其為 $s^*$，只要 $s(x,n) \geq s^*$，即判定該 $x$ 為異常的批次，反之則為正常的批次
+
+下圖 $x$ 軸為異常分數，$y$ 軸為批次個數，紅色線為 $s^*$，紅色線右方的批次即為iforest判斷的異常批次
+
+![](as_m15.png){width=100%}
+
+### 參數設置
+
+iforest演算法有幾個主要參數需要設置，分別為
+
+1. **總共需要幾棵樹 $(n)$**
+2. **建構一棵樹所需的樣本個數 (sample_size)**
+3. **樹的深度 (max_depth)**
+4. **隨機種子** (為了讓我們可以重新產生一樣的結果)
+
+```{r, eval = FALSE, echo = FALSE}
+load("Case2_Final.RData")
+Case2_Final
+# test inline 1 and 2
+for (i in 1:2) {
+  Case2_Final[[i]] <- Case2_Final[[i]][,-c(1,2)]  
+}
+
+Case2_Final[[6]] = Case2_Final[[6]][,-11]
+# remove 批號
+for (i in 3:7) {
+  Case2_Final[[i]] <- Case2_Final[[i]][,-1]  
+}
+
+# require(factoextra)
+library(solitude) # isolation forest package
+
+for (i in 1:7) {
+  print(nrow(Case2_Final[[i]]))
+}
+
+anomolous_sample <- list()
+iforest_model <- list()
+iforest_hist <- list()
+score <- list(); score_bar <- c(); score_class <- list(); perc <- c()
+bar_prob <- 0.85
+# seed <- sample(0:100)[1:5]
+seed_pool <- c(1, 56, 24, 95, 25)
+for (m in 3:7) {
+  df <-  Case2_Final[[m]]
+  
+  seed = seed_pool[m-2]
+  size = ifelse(nrow(df)>= 128, ifelse(nrow(df)>=256,256,128), nrow(df))
+  iforest <- isolationForest$new(
+    sample_size = size,
+    num_trees = 10000,
+    replace = TRUE,
+    seed = seed,
+    max_depth = ceiling(log2(size))
+    )
+  iforest$fit(df)
+  iforest_model <- append(iforest_model, iforest)
+  iforest_prediction <- iforest$predict(df)
+  score[[m-2]] <- iforest_prediction$anomaly_score
+  score_bar[m-2] <- unname(quantile(score[[m-2]],probs = c(bar_prob,1))[1])
+  iforest_hist[[m-2]] <- hist(score[[m-2]])
+  
+  score_class[[m-2]] <- ifelse(score[[m-2]] >= score_bar[m-2],1,0)
+  perc[m-2] <- sum(score_class[[m-2]])/length(score_class[[m-2]])
+
+  anomolous_sample[[m-2]] <- which(score_class[[m-2]] == 1)
+}
+# anomolous_sample[[1]]
+# score[[1]]
+```
+
+![](isolation_forest_hyper.png){width=100%}
+
+其中樣本數只要 $>= 256$ 即設置樣本數 / 樹 (sample_size) $=256$，Iforest作者認為更大的sample_size並無法提升模型準度且耗時；種樹量 $(n)$ 均設定為 $10000$ 以確保結果收斂；樹的深度(max_depth)設定為 $log_2(\text{sample_size})$， 因為此為對平均樹高的一個估計，而若我們可以在平均樹高前將某些批次分至外部節點，則這些批次越可能為異常批次，再將樹分下去也沒有意義(剩下的可能都是正常的批次)。
+
+### 異常批次列表
+
+```{r, echo = FALSE}
+load("anomolous_sample.rdata")
+anomolous_sample
+```
+
+### 方法驗證
+
+此部分我們嘗試將iforest應用到Problem 1 - inline 1 & 2的資料中以確認方法的可行性：
+
+以下將異常分數由高到低做排列，我們可以發現到inline 1的批次2為真異常且被iforest排在第二名，而inline 2的10, 11, 12為真異常，分別被排在1,7,2的位置，而這結果也會因為隨機種子的不同會得出蠻不同的結果，因為資料量過小的緣故，正常批次的群聚現象較不明顯。此比較僅供參考，但要注意iforest這方法會將CoA有出現極端值的批次視為異常批次，而此假設未必為真。
+
+```{r, echo = FALSE}
+load("anomolous_score_inline.rdata")
+
+score_sort <- list()
+for (i in 1:2) {
+  score_sort[[i]] <- sort(anomolous_score_inline[[i]], decreasing = T)
+}
+```
+
+### Inline 1 - 
+
+```{r, echo = FALSE}
+score_sort_idx <- list()
+for (i in 1:2) {
+  score_sort_idx[[i]] <- order(anomolous_score_inline[[i]], decreasing = T)
+}
+
+score_sort_idx[[1]]
+score_sort[[1]]
+```
+
+### Inline 2 -
+
+```{r}
+score_sort_idx[[2]]
+score_sort[[2]]
+```
+
+### 參考資料
+
+以下為此方法的論文連結：
+
+[Isolation Forest Paper](https://cs.nju.edu.cn/zhouzh/zhouzh.files/publication/icdm08b.pdf?q=isolation-forest)
+<br>
+<br>
+
+<p style="font-weight:600; font-size:30px">Hierarchical Clustering</p> 
+### 參數選擇
+
+- 資料處理 : 標準化
+
+- 距離 : 歐式距離
+
+- 群聚算法 : single linkage 
+
+- Goal :小群的批號總數相加至多到15%
+
+以下是分群後的結果:
+
+```{r eval=FALSE, include=FALSE}
+ctmp = c(4,8,40,30,30)
+for (i in 1:5) {
+inputData <- Material[[i]][,-c(1)] %>% scale() # 資料標準化
+E.dist <- dist(x = inputData, method = "euclidean")
+
+h.E.s = hclust(E.dist, method="single")
+
+k = ctmp[i]
+n = nrow(inputData)
+MidPoint = (h.E.s$height[n-k] + h.E.s$height[n-k+1]) / 2
+
+
+dend <- h.E.s %>% as.dendrogram %>%
+   set("branches_k_color", k=ctmp[i]) %>% set("branches_lwd", 0.6) %>%
+   set("labels_colors") %>% set("labels_cex", c(.9,1.2)) #%>% 
+   #set("leaves_pch", 19)# %>% set("leaves_col", c("black"))
+# plot the dend in usual "base" plotting engine:
+ggd1 <- as.ggdend(dend)
+print(ggplot(ggd1, theme = theme_minimal(), labels = FALSE) + ggtitle(paste("Material", i)) + geom_hline(yintercept = MidPoint, lty=2))
+tmp <- ggplot(ggd1, theme = theme_minimal(), labels = FALSE) + ggtitle(paste("Material", i)) + geom_hline(yintercept = MidPoint, lty=2)
+}
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, out.width='75%'}
+knitr::include_graphics("material1.png")
+knitr::include_graphics("material2.png")
+knitr::include_graphics("material3.png")
+knitr::include_graphics("material4.png")
+knitr::include_graphics("material5.png")
+``` 
+
+
+```{r}
+knitr::include_graphics("hc_cluster.png")
+```
+
+使用Hierarachical 對problem 1的Inline1和Inline2來做分類，以下是分類後的結果
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, out.width='50%'}
+knitr::include_graphics("Inline1.png")
+knitr::include_graphics("Inline2.png")
+```
+
+Inline1和Inline2兩者計算點和點之間的距離算法分別是使用`歐式距離`和`最大距離`，最大距離也就是maximum norm，是透過以下算法
+
+$$
+||x||_{\infty} = \max\{|x_1|,\ldots,|x_n|\}.
+$$
+
+用以上方法發現在Inline1和Inline2可以把異常批號和正常批號分成兩群。不過這是在知道那些是異常批號下在去計算點和點之間的距離，如果在未知的情況下，只用同一種距離方式來做計算的話是沒辦法完美的把異常批號分開的。
+
+所以不同距離的設定對不同的Material會有不一樣的分類結果，未來在對新資料做分類時，距離的挑選也是一個必須要考慮的分析，不然可能會挑選出完全不同的批號。
+
+
+### 異常批次列表
+
+```{r, echo = FALSE}
+load("hc_single.rdata")
+hc_E
+```
+<br>
+<br>
+
+<p style="font-weight:600; font-size:30px">Multivariate SPC</p>  
+### 方法介紹  
+
+我們針對Problem 2所使用的第三種模型是多維度的SPC方法，這邊採用的是$Hotelling's$ $T^2$ $shewhart$ $chart$。在這個control chart中，對於每一個Material，我們能透過以下定義的公式來對其中第i個批號計算統計量：  
+$$T_i^2=(X_i-\bar{X})^T(S^2)^{-1}(X_i-\bar{X})$$  
+其中$\bar{X}$代表該Material裡所有放入模型中的CoA的平均值，$S^2$則是相對應的共變異矩陣。而若以$X_i$代表第i個批號的所有CoA數值，我們就能透過此公式求出相對應的$T_i^2$值。直觀上來看，$T_I^2$值能夠代表第i個批號與平均值之間的差異大小，因此若某些批號的$T^2$值越大，就代表它越有可能屬於異常批號(OC)。這邊我們透過下方的公式來計算control limit:  
+$$control\ \ limit=\frac{(M-1)^2}{M}Beta_{1-\alpha}(\frac{p}{2},\frac{M-p-1}{2})$$  
+其中M代表此material中所含有的批號總數，p代表計算中所使用的CoA總數。當$T_i^2>control \ limit$發生時，我們便定義批號i為異常批號。  
+而在MSPC的實行過程中，我們主要考慮了兩種做法：  
+
+- 方法1:對於每個Material，都將所有CoA同時放進MSPC的公式中計算全部批號的$T^2$值。  
+
+
+- 方法2:對於每個Material，我們可以定義某些CoA為「常數型CoA」，意即在這個CoA當中，絕大多數的資料都屬於某些固定的數值，僅在少數批號中有跳動發生。而我們將把這些常數型CoA移出模型，僅將剩餘較接近常態分佈的CoA放進MSPC的公式中計算$T^2$值並進行第一階段異常批號的判斷。  
+而對於那些被移出模型外的常數型CoA，我們則是在第二階段來對其進行判斷：只要有批號在任一常數型CoA當中出現超過正負兩倍標準差範圍外的異常值，我們也同樣將其判定為異常批號。最後我們會把兩個階段的分析結果共同列出，並宣稱這些批號即為我們在方法2中所找出的所有異常批號。詳細的流程圖如下:  
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '100%'}
+knitr::include_graphics("pic/4701.jpg")
+```  
+
+顯然方法1是屬於較為簡單直覺的做法，而方法2則是針對方法1做出了些微的調整。考慮兩種做法的原因主要有兩個:  
+
+- 1.在Hotelling's $T^2$ control chart中，我們通常假設資料是來自於多維常態分佈，而這個假設在我們現有的五組Material資料中顯然都並不符合。因此我們在方法2中選擇將CoA分成兩類，以保證在計算$T^2$值時所使用的CoA是滿足模型假設的，並再將常數型CoA用其他方法做處理。  
+
+- 2.在數據不滿足多維常態的情況下，例如存在常數型CoA時，方法1的Hotelling's $T^2$ control chart通常仍然能幫我們辨別出異常值。但由於這類的CoA經常會使得模型所求出的$T^2$值被過度的放大，進而導致其他CoA的效應變得不夠顯著，也就是模型的整體結果可能會被少數的CoA給主宰，這時就會無法達到我們使用多維SPC方法的目標。  
+
+考慮到上述的兩種問題，我們將會先把這兩種方法同時應用在五組Material上並進行比較，再根據結果來決定最終要採用哪種方法進行後續的分析。  
+
+### 方法結果比較  
+
+|      |  Material 1  |   Material 2  |   Material 3  |   Material 4  |   Material 5  |
+|------|:------------:|:-------------:|:-------------:|:-------------:|:-------------:|
+|方法1 |    16.67%    |    11.18%     |     07.58%    |     09.41%    |     07.01%    |
+|方法2 |    20.83%    |    09.87%     |     17.68%    |     13.77%    |     09.23%    |  
+|交集  |    16.67%    |    09.21%     |     06.86%    |     09.41%    |     07.01%    |  
+
+上方表格中的數字即代表該方法在對應Material中所算出的異常批號比例，最下方則是兩種方法交集後的比例。可以發現方法2由於會將常數型CoA單獨拉出做單變量的異常批號判斷，因此使得這個方法在異常批號的辨別上較為寬鬆，也導致在大多Material當中，方法2都會傾向於得到更多的異常批號比例，甚至在Material 1中超過了20%。另外也可以發現，在兩者的交集比例中，大多的數值都會非常接近方法1所求出的異常比例，這代表方法1與方法2所找出的異常批次重複程度相當大。  
+接著我們將方法2中，兩個階段分別算出的異常批號比例也列進表格中：  
+
+|             |  Material 1  |   Material 2  |   Material 3  |   Material 4  |   Material 5  |
+|-------------|:------------:|:-------------:|:-------------:|:-------------:|:-------------:|
+|方法1        |    16.67%    |    11.18%     |     07.58%    |     09.41%    |     07.01%    |
+|方法2(階段1) |    16.67%    |    03.95%     |     08.66%    |     08.34%    |     05.90%    |  
+|方法2(階段2) |    08.33%    |    07.89%     |     10.47%    |     07.85%    |     03.69%    |  
+|交集 (階段1) |    12.50%    |    03.29%     |     06.86%    |     03.98%    |     05.16%    |  
+|交集 (階段2) |    08.33%    |    07.89%     |     01.10%    |     07.85%    |     02.21%    |  
+
+
+方法2的階段1比例，即代表在方法2中使用常態類型的CoA，套入MSPC方法後所求出的異常批號比例；階段2的數值，則代表常數型CoA在階段2所被辨別出的異常批號比例，這兩者的交集比例就會相當於是上個表格中，方法2的異常批號總比例。而我們在這個表格中主要想觀察的，是最下方「交集」部分的階段1、2比例與方法2的階段1、2比例是否接近。在方法介紹中曾經提及，我們擔心在方法1當中，MSPC的分析結果會被少數的常數型CoA給主宰，而如果發生了上述的這個情形，則我們可以預期到表格下方的「交集」部分中，階段1的數值將會接近0%，而階段2的數值將會與方法2的階段2數值接近。換言之，這就代表我們用方法1找出的交集比例幾乎都集中在常數型CoA的異常批號上，而無法找出在其他CoA中有異常的批號，也就是被常數型CoA主宰了MSPC的表現。  
+但透過觀察上方表格的數值，我們可以發現前段所述的情形並未發生，並且交集後的階段1數值通常與方法2的階段1數值接近。這代表了即使我們將常數型CoA一同放入MSPC模型內，也不會發生事前所擔心的少數CoA主宰模型表現的情形。因此透過上方的方法差異分析，以及考量到找出的異常批號比例關係後，我們決定在後續分析中都只採用方法1來進行討論，也就是只考慮把所有CoA都放入MSPC模型的方法。  
+
+### 異常批號辨別  
+
+在決定將所有CoA都放入MSPC模型之後，我們就能透過在方法介紹中所提及的$T^2$以及control limit的算法，來找出5個Material各自的異常批號。詳細的結果如下方圖片所示： 
+
+```{r, echo=FALSE, eval=FALSE, message=FALSE}
+load("Case2_Final.RData")
+#Material 1
+data.con <- Case2_Final[[3]]
+mu <- colMeans(data.con[,-1])
+sigma <- cov(data.con[,-1])
+X_minus_mu <- t(t(data.con[,-1])-mu)
+T2 <- rowSums(X_minus_mu %*% solve(sigma)*X_minus_mu)
+UL.test2 <- qbeta(0.95,11/2,(24-12)/2)*23*23/24
+plot(T2,main = "Material 1",ylim=c(0,80))
+abline(h=UL.test2,col=2,lty=2)
+limit <- 10*(20-1)*(20+1)/(20-10)/20*qf(1-0.05,10,20-10)
+abline(h=limit,col=4,lty=2)
+legend("topright", col = c("red","blue"),lty = c(2,2), legend = c("Phase 1", "Phase 2"))
+which(T2>UL.test2)
+#Material 2
+data.con <- Case2_Final[[4]]
+for(i in 2:dim(data.con[,-1])[2]){
+  data.con[,i] <- scale(data.con[,i])
+}
+mu <- colMeans(data.con[,-1])
+sigma <- cov(data.con[,-1])
+X_minus_mu <- t(t(data.con[,-1])-mu)
+T2 <- rowSums(X_minus_mu %*% solve(sigma)*X_minus_mu)
+UL.test2 <- qbeta(0.95,4/2,(152-5)/2)*151*151/152
+plot(T2,main = "Material 2")
+abline(h=UL.test2,col=2,lty=2)
+limit <- 4*(135-1)*(135+1)/(135-4)/135*qf(1-0.05,4,135-4)
+abline(h=limit,col=4,lty=2)
+legend("topright", col = c("red","blue"),lty = c(2,2), legend = c("Phase 1", "Phase 2"))
+which(T2>UL.test2)
+#Material 3
+data.con <- Case2_Final[[5]]
+for(i in 2:dim(data.con[,-1])[2]){
+  data.con[,i] <- scale(data.con[,i])
+}
+mu <- colMeans(data.con[,-1])
+sigma <- cov(data.con[,-1])
+X_minus_mu <- t(t(data.con[,-1])-mu)
+T2 <- rowSums(X_minus_mu %*% solve(sigma)*X_minus_mu)
+UL.test2 <- qbeta(0.95,24/2,(277-25)/2)*276*276/277
+plot(T2,main="Material 3")
+abline(h=UL.test2,col=2,lty=2)
+limit <- 24*(256-1)*(256+1)/(256-24)/256*qf(1-0.05,24,256-24) 
+abline(h=limit,col=4,lty=2)
+legend("topright", col = c("red","blue"),lty = c(2,2), legend = c("Phase 1", "Phase 2"))
+which(T2>UL.test2)
+#Material 4
+data <- Case2_Final[[6]]
+data.con <- data[,-11]  #全常數CoA
+for(i in 2:dim(data.con[,-1])[2]){
+  data.con[,i] <- scale(data.con[,i])
+}
+mu <- colMeans(data.con[,-1])
+sigma <- cov(data.con[,-1])
+X_minus_mu <- t(t(data.con[,-1])-mu)
+T2 <- rowSums(X_minus_mu %*% solve(sigma)*X_minus_mu)
+UL.test2 <- qbeta(0.95,11/2,(1031-12)/2)*1030*1030/1031
+plot(T2,main="Material 4",ylim=c(0,250))
+abline(h=UL.test2,col=2,lty=2)
+limit <- 11*(934-1)*(934+1)/(934-11)/934*qf(0.95,11,934-11)
+abline(h=limit,col=4,lty=5)
+legend("topright", col = c("red","blue"),lty = c(2,2), legend = c("Phase 1", "Phase 2"))
+#Material 5
+data.con <- Case2_Final[[7]]
+for(i in 2:dim(data.con[,-1])[2]){
+  data.con[,i] <- scale(data.con[,i])
+}
+mu <- colMeans(data.con[,-1])
+sigma <- cov(data.con[,-1])
+X_minus_mu <- t(t(data.con[,-1])-mu)
+T2 <- rowSums(X_minus_mu %*% solve(sigma)*X_minus_mu)
+UL.test2 <- qbeta(0.95,4/2,(271-5)/2)*270*270/271
+plot(T2,main = "Material 5")
+abline(h=UL.test2,col=2,lty=2)
+limit <- 4*(252-1)*(252+1)/(252-4)/252*qf(0.95,4,252-4) 
+abline(h=limit,col=4,lty=5)
+legend("topright", col = c("red","blue"),lty = c(2,2), legend = c("Phase 1", "Phase 2"))
+which(T2>UL.test2)
+
+```
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '70%'}
+knitr::include_graphics("pic/4702.jpg")
+```  
+
+圖中的橫軸即為批號的順序，縱軸為$T^2$的數值，因此每個黑點就代表該批號以及所對應到的$T^2$值。紅色虛線為算出的control limit(藍色虛線在下一小節會說明)，因此只要有黑點落在紅線上方，就代表該批號在MSPC方法中將會被定義為異常批號。而異常批號在對應Material所佔的比例如下表：  
+
+|      |  Material 1  |   Material 2  |   Material 3  |   Material 4  |   Material 5  |
+|------|:------------:|:-------------:|:-------------:|:-------------:|:-------------:|
+| 比例 |    16.67%    |    11.18%     |     07.58%    |     09.41%    |     07.01%    |  
+
+### 異常批次列表 
+
+此處為MSPC方法所找出的所有異常批號列表，上至下依序為五個Material與各自所對應的異常批號。  
+
+```{r, echo = FALSE}
+load("ab.batch_spc.rdata")
+ab.batch_spc
+```
+
+### 新批號預測  
+
+接著是需要判定新資料是否為異常批號的問題。在判斷現有資料是否異常時是屬於phase 1的情況，而預測新資料則是phase 2的問題。而在phase 2中，我們已經將所有異常批次移除出MSPC的模型之外了，接著只需要針對phase 1的公式做出部分的修改：  
+
+假設有新資料$X_{i+1}$需要進行判斷，則我們可以定義新資料所對應到的$T^2$值可以用下方公式計算:  
+
+$$T_{i+1}^2=(X_{i+1}-\bar{X_I})^T(S_I^2)^{-1}(X_{i+1}-\bar{X_I})$$  
+其中$\bar{X_I}$代表該Material裡所有正常批號(IC)資料的CoA平均值，$S_I^2$則是相對應的IC資料共變異矩陣。以$X_{i+1}$代表新資料的所有CoA數值時，我們就能透過此公式求出相對應的$T_{i+1}^2$值。  
+
+而除了平均值與共變異矩陣外，在phase 2中的control limit也有所更動:  
+$$control\ \ limit=\frac{p(M-1)(M+1)}{(M-p)M}F_{1-\alpha}(p,M-p)$$  
+其中M代表此material中所剩餘的IC批號總數，p代表計算中所使用的CoA總數。當$T_{i+1}^2>control \ limit$時，我們便會預測這個新批號的資料為異常批號。  
+需要特別注意這邊所使用的平均值、共變異矩陣與資料個數、control limit都是在移除phase 1的異常批號之後重新計算得出的結果，因此和先前方法介紹中所使用的數值皆不相同。而在預測五個Material的新資料時所使用的control limit，我們將其用藍色虛線標示在先前的五張圖片中。可以看到在phase 2中的control limit大致會與phase 1的control limit接近。而在Material 1中，紅色與藍色虛線的距離相差較遠，這主要是由於IC資料的數量過少(Material總計只有24筆數據)，因此計算出的phase 2的control limit就會與phase 1的結果差異較大。這個情況在其餘四個Material中便不會發生。  
+
+### 方法測試:以inline 1、inline 2為例  
+
+最後我們將上述的MSPC方法套入至inline1、inline2的數據當中做測試，觀察是否能夠正確的找出異常批號。但需要特別注意，由於在這兩筆資料中，我們的CoA個數都超過現有的批號數，因此會導致公式中共變異矩陣的反矩陣無法計算。所以這邊我們放入的CoA必須要先做篩選，而這邊我選擇的篩選方式是透過Problem 1中所提及的OGA方法，將變數從對模型影響最大至小來依序坐挑選，最後inline 1中共有9個CoA，分別是CoA3、1、7、15、4、9、14、13、6；而inline 2中共有7個CoA，分別是CoA8、13、3、10、23、15、7。  
+
+透過上述方法篩選CoA後，所畫出的批號與$T^2$圖形、control limit如下：  
+
+```{r, eval = FALSE, echo = FALSE}
+data <- Case2_Final[[1]]
+data.con <- data[,c(1,2,5,9,17,6,11,16,15,3,8)]
+mu <- colMeans(data.con[,c(-1,-2)])
+sigma <- cov(data.con[,c(-1,-2)])
+X_minus_mu <- t(t(data.con[,c(-1,-2)])-mu)
+T2 <- rowSums((X_minus_mu %*% solve(sigma)*X_minus_mu))
+UL.test2 <- qbeta(0.95,9/2,(10-10)/2)*9*9/10
+plot(T2,main = "Inline 1",pch=16,type="b")
+abline(h=UL.test2,col=2,lty=2)
+which(T2>UL.test2)
+
+data <- Case2_Final[[2]]
+data.con <- data[,c(1,2,5,9,10,12,15,17,23)]
+data.con[,c(-1,-2)] <- scale(data.con[,c(-1,-2)])
+mu <- colMeans(data.con[,c(-1,-2)])
+sigma <- cov(data.con[,c(-1,-2)])
+X_minus_mu <- t(t(data.con[,c(-1,-2)])-mu)
+T2 <- rowSums(X_minus_mu %*% solve(sigma)*X_minus_mu)
+UL.test2 <- qbeta(0.95,7/2,(12-8)/2)*11*11/12
+plot(T2,main="inline 2",pch=16,type="b")
+abline(h=UL.test2,col=2,lty=2)
+which(T2>UL.test2)
+```
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '70%'}
+knitr::include_graphics("pic/4703.png")
+```  
+
+可以看到在兩組inline數據中，我們都並沒有辦法挑選出真正inline有異常的批號。而如果將inline 1、inline 2的分析結果與原始EDA的結果對照，也會發現這些被MSPC錯誤挑選出的正常批號，事實上在某些CoA中也會是異常值。而在整體資料量不足的情況下，這些批號就很容易在MSPC的方法中被挑選成為異常批號，這可能就是導致MSPC在這兩組資料中表現不佳的原因。除此之外，可能造成這個結果的原因也包含：OGA方法篩選出的CoA不恰當、有某些其他影響inline結果的CoA沒有列進資料中...等等。這部分可能就需要再針對這樣的情況進行調整。
+
+# Information Summary
+## Problem 1
+- 在資料探索時，Inline1的CoA_1和CoA_3，Inline2的CoA_8有線性的趨勢，且OGA也將其選出作為重要變數
+
+- 選擇這些解釋變數大致能解釋Inline的結果($R_1^2=0.941$,$R_2^2=0.8803$)
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '50%'}
+knitr::include_graphics("inline1_CoA1.png")
+knitr::include_graphics("inline1_CoA3.png")
+knitr::include_graphics("inline2_CoA8.png")
+```  
+
+
+## Problem 2
+### 各方法異常批次比較
+### Material 1
+![](pic/summary_m1_alarm.png)
+
+- Material1批次較少，只有24個，批號3、4三方法皆有出現
+
+### Material 2
+![](pic/summary_m2_alarm.png)
+
+- Material2中偵測到的異常批號大致相同，Isolation Forest偵測到較多不同於其他方法的批次
+
+### Material 3
+![](pic/summary_m3_alarm.png)
+
+- Material3中，三方法偵測到的異常批號差異較大，僅有5個批號皆被偵測異常
+
+### Material 4
+![](pic/summary_m4_alarm.png)
+
+- Material4中偵測到的異常批號大致相同，Isolation Forest偵測到較多不同於其他方法的批次
+
+### Material 5
+![](pic/summary_m5_alarm.png)
+
+- Material5中，MSPC選到的異常批次相對另外兩個方法少，另外兩個方法則有偵測到各別不同的批次
+
+![](pic/table.png)
+
+- 把三個方法的異常批次取交集，定義為我們認為最有可能異常的批次，除了Material3外，
+其他Material的三方法交集大概跟找到最少批號比例的方法重疊
+
+
+在剛剛的summary中主要提及了三個方法之間的異常批號關係，而接下來主要想探討交集的異常批號與它們的CoA之間的關聯。以下圖形皆代表在各個Material中，三個方法的共同異常批號裡面，有多少比例的批號在特定CoA中就已經是異常值了。這個比例值如果越大，則可以說明該CoA對於此Material的分析影響越劇烈。而直觀來看，這個比例同時也代表了若我們不進行任何分析，直接從單一的CoA來進行單變量的異常批號辨別時，有多少比例的異常批號仍然能夠被診斷出來。  
+
+### CoA Importance
+### Material 1  
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '70%'}
+knitr::include_graphics("material 1 CoA.png")
+```  
+
+在Material 1中，可以發現所有CoA的比例皆為50%，這是因為Material 1中總計只有2筆的共同異常批號，因此不容易進行判斷。  
+
+### Material 2  
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '70%'}
+knitr::include_graphics("material 2 CoA.png")
+```  
+
+在Material 2中，CoA6的比例達到92.3%，說明這個CoA對於我們的分析結果影響劇烈。  
+
+### Material 3  
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '70%'}
+knitr::include_graphics("material 3 CoA.png")
+```  
+
+在Material 3中，整體的異常批號為5筆，因此大多CoA中僅有1至2筆的差異，所以我們認為無法進行判斷。
+
+### Material 4  
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '70%'}
+knitr::include_graphics("material 2 CoA.png")
+```  
+
+在Material 4中，CoA13達到62.2%。雖然不像Material 2中的CoA6能夠達到90%，但仍然能代表這個CoA對我們Material 4的分析結果有很大的影響。
+
+### Material 5  
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '70%'}
+knitr::include_graphics("material 2 CoA.png")
+```  
+
+在Material 5中，CoA2、3都超過30%，CoA5則達到47.4%，都明顯高於剩下的CoA1，這代表CoA1的數值對我們Materail 5的分析影響較小。  
+
+**而從這段summary來看，除了我們能夠找到對各個Material分析影響較大的CoA外，同時我們也能注意到，通常能夠得到較高比例數值的CoA，多半都是屬於常數型CoA，也就是大多批號的數值都落在某些固定值上，僅在少部分批號中有所跳動。例如剛剛提到數值特別高的Material 2的CoA6、Material 4的CoA13都屬於此類型。這代表在不同的分析方法中，這種類型的CoA都對我們的結果影響很大，因此這可能是一種需要特別留意的CoA特性。**  
+
+
+
+
+### 各方法異常批次趨勢
+![](pic/legend.jpg){width=20%}
+
+```{r, echo=FALSE,message=FALSE,warning=FALSE, out.width = '50%'}
+knitr::include_graphics("pic/summary_m1_tp.png")
+knitr::include_graphics("pic/summary_m2_tp.png")
+knitr::include_graphics("pic/summary_m3_tp.png")
+knitr::include_graphics("pic/summary_m4_tp.png")
+knitr::include_graphics("pic/summary_m5_tp.png")
+```  
+
+- Material2、4、5，  三個方法找到的異常批次較接近
+- Material3三個方法找到的異常批次差異較大
+- Material2、4有較高比例的異常批次發生在前期
+
+# Decision Making
+## Problem 1
+- Linear Model: 預測response值後判斷是否異常
+
+## Problem 2
+- Isolation Forest: 將新資料代入模型計算Anomaly score
+- Hierarchical Clustering: 將資料label後，再採用KNN分類
+- Shewhart Chart: 移除異常批號後重新建立control chart，並針對新批號計算𝑇^2 值
+- 共同監控，例如任一組出現異常即判定為異常批次
+
+
+### 批號交集表
+![](intersection.png)
+
+
+
+
+
+```{r}
+# load("case2_clean.RData")
+# load("Case2_Final.RData")
+# Case2_Final = sapply(Case2_Final, as.data.frame)
+```
+
+
+```{r}
+# plot_ellipse = function(dataset,var1,var2,size=1,type="t"){
+#   # Build the plot first
+#   p <- ggplot(dataset, aes(var1, var2)) +
+#     geom_point() +
+#     stat_ellipse()
+#   
+#   # Extract components
+#   build <- ggplot_build(p)$data
+#   points <- build[[1]]
+#   ell <- build[[2]]
+#   
+#   # Find which points are inside the ellipse, and add this to the data
+#   dat <- data.frame(
+#     points[1:2], 
+#     in.ell = as.logical(point.in.polygon(points$x, points$y, ell$x, ell$y))
+#   )
+#   
+#   # Plot the result
+#   tmp = ggplot(dat, aes(x, y)) +
+#           geom_point(aes(col = in.ell),size=size) +
+#           stat_ellipse(color="blue",type=type)+
+#           scale_color_manual(name="Control",labels = c("OC", "IC"),
+#                              values=c("red", "black"))+
+#         theme(axis.title = element_text(size=10, face="bold", color = "black"))+
+#           theme_bw()
+#   return(tmp) 
+# }
+```
+
+
+
+
+```{r}
+# inline1 = case2_clean[[1]]
+# inline1$out = as.factor(c("IC","OC",rep("IC",8)))
+# inline1$批號 = as.factor(inline1$批號)
+# com_inline1 = inline1 %>% gather(key = CoA, value = val, CoA_1:CoA_15)
+# com_inline1$CoA = factor(com_inline1$CoA,
+#                   level = paste0("CoA_",1:15))
+
+```
+
+
+
+```{r}
+# tmp1 = ggplot(com_inline1,aes(x=out))+
+#        geom_boxplot(aes(y = val,fill=out))+
+#        # geom_jitter(aes(y = val),
+#        #             position = position_jitter(set.seed(1)), size=1)+
+#        theme_bw()+
+#        facet_wrap(CoA~ ., scales = "free")+
+#        scale_fill_manual(values = c("gray45", "#F8766D"))
+# 
+# 
+# tmp1
+# ggsave(tmp1,filename=paste0("inline1_box",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+```
+
+
+```{r}
+# corMat = cor(inline1[,-c(1,2,18)])
+# corrplot.mixed(corMat)
+
+```
+
+
+
+
+
+```{r}
+# tmp2 = ggplot(com_inline1,aes(x=批號))+
+#        geom_point(aes(y = val,col=out),size=2)+
+#        theme_bw()+
+#        facet_wrap(CoA~ ., scales = "free")+ 
+#        scale_color_manual(breaks = c("IC", "OC"),
+#                          values=c("black", "red"))
+# 
+# tmp2
+```
+
+
+
+```{r}
+# p = list(NULL)
+# 
+# 
+# index = data.frame(f=c(3,3,3,4,4,5,6,8,8,10,11,12,12,14,14,14),
+#                    s=c(8,14,15,12,14,14,14,14,15,14,14,14,15,15,16,17))
+# 
+# for (i in 1:16) {
+#   tmp= ggplot(data=inline1)+
+#         geom_point(aes(x=inline1[,index[i,1]] ,
+#                        y=inline1[,index[i,2]],color=out),size=2)+
+#         theme_bw()+xlab(paste0("CoA_",index[i,1]-2))+ylab(paste0("CoA_",index[i,2]-2))+
+#         geom_text(aes(x=inline1[,index[i,1]] ,y=inline1[,index[i,2]],label=`批號`),
+#                   size=2)+
+#         theme(axis.title = element_text(size=12, face="bold", color = "black"),
+#               legend.position = "none")+ 
+#        scale_color_manual(breaks = c("IC", "OC"),
+#                          values=c("gray45", "#F8766D"))
+#   # print(tmp)
+#   p[[i]] = ggplotGrob(tmp)
+# }
+# 
+# grid.arrange(grobs=p, ncol=4)
+# tmp = arrangeGrob(grobs=p, ncol=4)
+# ggsave(tmp,filename=paste0("inline1_CoA",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+# for (i in c(3,4,5,6,8,10,11,12,14)) {
+#   for (j in c(8,12,14,15,16,17)) {
+#     if(i < j){
+#       round = round + 1
+#       tmp= ggplot(data=inline1)+
+#         geom_point(aes(x=inline1[,i] ,y=inline1[,j],color=out),size=1)+
+#         theme_bw()+xlab(paste0("CoA_",i-2))+ylab(paste0("CoA_",j-2))+
+#         geom_text(aes(x=inline1[,i] ,y=inline1[,j],label=`批號`))+
+#         theme(axis.title = element_text(size=12, face="bold", color = "black"),
+#               legend.title = element_blank())
+#       # print(tmp)
+#       p[[round]] = ggplotGrob(tmp)
+#     }
+#   }
+# }
+
+
+```
+
+
+```{r}
+# tmp = ggplot(data=com_inline1)+
+#         geom_point(aes(x=val ,y=Inline,color=out),size=2)+
+#         theme_bw()+
+#         geom_text(aes(x=val ,y=Inline,label=`批號`),size=2)+
+#         geom_hline(yintercept = c(-0.3,0.3), linetype=2)+
+#         ylim(c(-0.4,0.4))+
+#         facet_wrap(CoA~ ., scales = "free")+ 
+#         scale_color_manual(breaks = c("IC", "OC"),
+#                            values=c("gray45", "#F8766D"))+
+#         theme(legend.title = element_blank())    
+# 
+# tmp 
+
+# ggsave(tmp,filename=paste0("inline1vsCoA",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",width=10)
+
+```
+
+
+```{r}
+# tmp = ggplot(data=filter(com_inline1,CoA=="CoA_1"),aes(x=val,y=Inline))+
+#   geom_point(aes(col=out),size=3)+ 
+#   geom_text(aes(x=val ,y=Inline,label=`批號`),size=2)+
+#   scale_color_manual(breaks = c("IC", "OC"),
+#                      values=c("gray45", "#F8766D"))+
+#   xlab("CoA_1")+
+#   theme_bw()+
+#   theme(legend.title = element_blank())+
+#   ggtitle("Inline1 CoA_1")
+# tmp
+# 
+# ggsave(tmp,filename=paste0("inline1_CoA1",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+# 
+# 
+# tmp = ggplot(data=filter(com_inline1,CoA=="CoA_3"),aes(x=val,y=Inline))+
+#   geom_point(aes(col=out),size=3)+ 
+#   geom_text(aes(x=val ,y=Inline,label=`批號`),size=2)+
+#   scale_color_manual(breaks = c("IC", "OC"),
+#                      values=c("gray45", "#F8766D"))+
+#   xlab("CoA_3")+
+#   theme_bw()+
+#   theme(legend.title = element_blank())+
+#   ggtitle("Inline1 CoA_3")
+# tmp
+# 
+# ggsave(tmp,filename=paste0("inline1_CoA3",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+
+```
+
+
+
+
+
+
+```{r}
+# inline2 = case2_clean[[2]]
+# inline2$out = as.factor(rep(c("IC","OC"),times=c(9,3)))
+# inline2$批號 = as.factor(inline2$批號)
+# com_inline2 = inline2 %>% gather(key = CoA, value = val, CoA_1:CoA_29)
+# com_inline2$CoA = factor(com_inline2$CoA,
+#                   level = paste0("CoA_",c(1:17,19:20,22:29)))
+
+```
+
+
+
+```{r}
+# tmp1 = ggplot(com_inline2,aes(x=out))+
+#        geom_boxplot(aes(y = val,fill=out))+
+#        # geom_jitter(aes(y = val),
+#        #             position = position_jitter(set.seed(1)), size=1)+
+#        theme_bw()+
+#        facet_wrap(CoA~ ., scales = "free")+
+#        scale_fill_manual(values = c("gray45", "#F8766D"))
+# 
+# tmp1
+# ggsave(tmp1,filename=paste0("inline2_box",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",height=6,width=8)
+
+
+# ggplot(com_inline2,aes(x=CoA))+
+#   geom_boxplot(aes(y = val))+
+#   geom_jitter(aes(y = val, colour = 批號, shape = out), 
+#               position = position_jitter(set.seed(1)), size=5)+
+#   theme_bw()+
+#   geom_text(aes(y = val, label = 批號), 
+#             position = position_jitter(set.seed(1)))+
+#   facet_wrap(CoA~ ., scales = "free")
+
+
+```
+
+
+```{r}
+
+# p = list(NULL)
+# 
+# index1 = data.frame(f=rep(10,25),s=c(3:9,11:28))
+# index2 = data.frame(f=rep(8,25),s=c(1:7,9:17,19:20,22:28))
+# 
+# for (i in 1:25) {
+#   tmp= ggplot(data=inline2)+
+#         geom_point(aes(x=inline2[,index1[i,1]] ,
+#                        y=inline2[,index1[i,2]],color=out),size=2)+
+#         theme_bw()+
+#         xlab(paste0("CoA_",index2[i,1]))+
+#         ylab(paste0("CoA_",index2[i,2]))+
+#         geom_text(aes(x=inline2[,index1[i,1]] ,y=inline2[,index1[i,2]],label=`批號`),
+#                   size=2)+
+#         theme(axis.title = element_text(size=12, face="bold", color = "black"),
+#               legend.position = "none")+ 
+#        scale_color_manual(breaks = c("IC", "OC"),
+#                          values=c("gray45", "#F8766D"))
+#   # print(tmp)
+#   p[[i]] = ggplotGrob(tmp)
+# }
+# 
+# grid.arrange(grobs=p, ncol=5)
+# tmp = arrangeGrob(grobs=p, ncol=5)
+
+# ggsave(tmp,filename=paste0("inline2_CoA",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",width=12)
+
+
+
+
+```
+
+
+
+```{r}
+# tmp = ggplot(data=com_inline2)+
+#         geom_point(aes(x=val ,y=Inline,color=out),size=2)+
+#         theme_bw()+
+#         geom_text(aes(x=val ,y=Inline,label=`批號`),size=2)+
+#         geom_hline(yintercept = 29, linetype=2)+
+#         ylim(c(0,30))+
+#         facet_wrap(CoA~ ., scales = "free")+ 
+#         scale_color_manual(breaks = c("IC", "OC"),
+#                            values=c("gray45", "#F8766D"))+
+#         theme(legend.title = element_blank())  
+# tmp
+# 
+# ggsave(tmp,filename=paste0("inline2vsCoA",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",height=6,width=12)
+```
+
+```{r}
+# tmp = ggplot(data=filter(com_inline2,CoA=="CoA_8"),aes(x=val,y=Inline))+
+#   geom_point(aes(col=out),size=3)+ 
+#   geom_text(aes(x=val ,y=Inline,label=`批號`),size=2)+
+#   scale_color_manual(breaks = c("IC", "OC"),
+#                      values=c("gray45", "#F8766D"))+
+#   xlab("CoA_8")+
+#   theme_bw()+
+#   theme(legend.title = element_blank())+
+#   ggtitle("Inline2 CoA_8")
+# tmp
+# 
+# ggsave(tmp,filename=paste0("inline2_CoA8",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+```
+
+
+
+
+```{r}
+# material1 = case2_clean[[3]]
+# index1 = as.numeric(as.matrix(material1[,-1]))
+# index1 = ifelse(is.na(index1),"NA","NNA")
+# 
+# material1_NA = na.omit(material1[,c(1,3,6)])
+```
+
+
+```{r}
+# upper = apply(material1_NA[,-1],2,function(x){mean(x)+2*sd(x)})
+# lower = apply(material1_NA[,-1],2,function(x){mean(x)-2*sd(x)})
+# outp = NULL
+# for (i in 2:ncol(material1_NA)) {
+#   tmp = material1_NA[,i]
+#   tmp_v = rep(0,length(tmp))
+#   tmp_v[which(tmp > upper[i-1] | tmp < lower[i-1])] = 1
+#   outp = c(outp,tmp_v)
+# }
+# 
+# com_material1_NA = material1_NA %>% gather(key = CoA, value = val, CoA_3:CoA_7)
+# com_material1_NA$CoA = factor(com_material1_NA$CoA,
+#                       level = paste0("CoA_",c(3,7)))
+# com_material1_NA$out = outp
+# out_table_NA = table(which(com_material1_NA$out != 0) %% nrow(material1_NA))
+# out_table_NA
+```
+
+
+```{r}
+# na = NULL
+# for (i in 1:ncol(material1)) {
+#   if(length(table(is.na(material1[,i])))==2) {
+#     na = c(na,i)
+#   }
+# }
+# material1 = material1[,-na]
+# # material1$批號 = as.factor(material1$批號)
+# upper = apply(material1[,-1],2,function(x){mean(x)+2*sd(x)})
+# lower = apply(material1[,-1],2,function(x){mean(x)-2*sd(x)})
+# outp = NULL
+# for (i in 2:ncol(material1)) {
+#   tmp = material1[,i]
+#   tmp_v = rep(0,length(tmp))
+#   tmp_v[which(tmp > upper[i-1] | tmp < lower[i-1])] = 1
+#   outp = c(outp,tmp_v)
+# }
+# 
+# com_material1 = material1 %>% gather(key = CoA, value = val, CoA_2:CoA_16)
+# com_material1$CoA = factor(com_material1$CoA,
+#                       level = paste0("CoA_",c(2,5,6,11:16)))
+# com_material1$out = outp
+# 
+# out_table = table(which(com_material1$out != 0) %% nrow(material1))
+# out_table
+# sort(out_table)[77:length(out_table)]
+
+
+```
+
+```{r}
+# material1_NNA = Case2_Final[[3]]
+# 
+# # material1$批號 = as.factor(material1$批號)
+# upper = apply(material1_NNA[,-1],2,function(x){mean(x)+2*sd(x)})
+# lower = apply(material1_NNA[,-1],2,function(x){mean(x)-2*sd(x)})
+# outp = NULL
+# for (i in 2:ncol(material1_NNA)) {
+#   tmp = material1_NNA[,i]
+#   tmp_v = rep(0,length(tmp))
+#   tmp_v[which(tmp > upper[i-1] | tmp < lower[i-1])] = 1
+#   outp = c(outp,tmp_v)
+# }
+# 
+# com_material1_NNA = material1_NNA %>% gather(key = CoA, value = val, CoA_2:CoA_16)
+# com_material1_NNA$CoA = factor(com_material1_NNA$CoA,
+#                       level = paste0("CoA_",c(2:3,5:7,11:16)))
+# com_material1_NNA$out = outp
+# com_material1_NNA$NAornot = index1
+# out_table_NNA = table(which(com_material1_NNA$out != 0) %% nrow(material1_NNA))
+# out_table_NNA
+# sort(out_table)[77:length(out_table)]
+
+```
+
+
+
+```{r}
+# corMat = cor(material1_NNA[,-1])
+# tmp = corrplot.mixed(corMat)
+# tmp
+# ggsave(tmp,filename=paste0("material1_cor",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+```
+
+
+
+```{r}
+# flag = 0
+# for (i in 2:12) {
+#   for (j in 2:12) {
+#     if(i < j){
+#       flag = flag + 1
+#       tmp =
+#         plot_ellipse(material1_NNA,material1_NNA[,i],material1_NNA[,j],
+#                      size=3,type="t")
+#       tmp = tmp + xlab(names(material1_NNA)[i])+ylab(names(material1_NNA)[j])
+#       print(tmp)
+#     }
+#   }
+# }
+
+
+# p = list(NULL)
+# index = data.frame(f=c(2,2,2,10,10,11),
+#                    s=c(10,11,12,11,12,12))
+# 
+# for (i in 1:6) {
+#   tmp = plot_ellipse(material1_NNA,material1_NNA[,index$f[i]],material1_NNA[,index$s[i]],
+#                      size=1.5)
+#         tmp = tmp + xlab(names(material1_NNA)[index$f[i]])+ylab(names(material1_NNA)[index$s[i]])
+#   # print(tmp)
+#   p[[i]] = ggplotGrob(tmp)
+# }
+# 
+# grid.arrange(grobs=p, ncol=2)
+# tmp = arrangeGrob(grobs=p, ncol=2)
+# ggsave(tmp,filename=paste0("material1_CoA_pair",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+
+
+```
+
+
+
+```{r}
+# sp = ggplot(data=com_material1,aes(x=批號,y=val))+
+#       geom_point(aes(color=as.factor(out)),size=1.5)+
+#       facet_wrap(CoA~ ., scales = "free")+
+#       theme_bw()
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#       theme(strip.text.x = element_text(size = 6))
+#     
+# tmp
+# # ggsave(tmp,filename=paste0("material1",".png"),
+# #        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",height=5,width=8)
+# 
+# 
+# sp = ggplot(data=com_material1_NA,aes(x=批號,y=val))+
+#       geom_point(aes(color=as.factor(out)),size=1.5)+
+#       facet_wrap(CoA~ ., scales = "free")+
+#       theme_bw()
+#       # +theme(legend.position = "none")
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#            theme(strip.text.x = element_text(size = 6))
+#     
+# tmp
+# ggsave(tmp,filename=paste0("material1_NA",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",height=5,width=8)
+
+```
+
+
+
+```{r}
+
+# 
+# sp = ggplot(data=com_material1_NNA,aes(x=批號,y=val))+
+#       geom_point(aes(color=as.factor(out),shape=as.factor(NAornot)),size=1.5)+
+#       facet_wrap(CoA~ ., scales = "free")+
+#       theme_bw()
+#       # +theme(legend.position = "none")
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#            scale_shape_manual(name="NA",labels = c("no", "yes"),values=c(17, 16))+
+#            theme(strip.text.x = element_text(size = 6))
+#     
+# tmp
+# ggsave(tmp,filename=paste0("material1_NNA",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",height=5,width=8)
+
+```
+
+
+
+
+
+```{r}
+# out_table1 = data.frame(sort(out_table,decreasing=T))
+# rep_num1 = NULL
+# for(num in 1:nrow(out_table1)){
+#   rep_num1 = c(rep_num1,rep(as.numeric(out_table1$Var1[num]),out_table1$Freq[num]))
+# }
+# 
+# material1_COA = NULL
+# for (num in 1:nrow(out_table1)) {
+#   tmp = com_material1[which(com_material1$批號 == out_table1$Var1[num]),]
+#   material1_COA = c(material1_COA,as.factor(tmp[which(tmp$out == 1),2]))
+# }
+# 
+# out_table1_plt = data.frame(num = as.factor(levels(out_table1$Var1)[rep_num1]),
+#                             CoA = levels(com_material1$CoA)[material1_COA],
+#                             count=rep(1,length(rep_num1)))
+# # levels(out_table1_plt$num) = levels(out_table1$Var1)
+# out_table1_plt$num = factor(out_table1_plt$num,levels(out_table1$Var1))
+```
+
+
+```{r}
+# tmp = ggplot(data=out_table1_plt, aes(x=fct_rev(fct_infreq((num))), y=count)) +
+#   geom_bar(stat="identity", aes(fill=CoA)) + 
+#   ggtitle("Materia1 barplot")+
+#   coord_flip() +
+#   xlab("批號") +
+#   theme_bw()
+# 
+# tmp = tmp + theme(axis.text.x = element_text(size=12, face="bold", color = "black"), 
+#             axis.text.y = element_text(size=20, face="bold", color = "black")) 
+# tmp
+# ggsave(tmp,filename=paste0("material1_批號",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+```
+
+
+
+```{r}
+# material2 = case2_clean[[4]]
+# na = NULL
+# for (i in 1:ncol(material2)) {
+#   if(length(table(is.na(material2[,i])))==2) {
+#     na = c(na,i)
+#   }
+# }
+# material2 = material2[,-na]
+# material2$批號 = as.factor(material2$批號)
+# upper = apply(material2[,-1],2,function(x){mean(x)+2*sd(x)})
+# lower = apply(material2[,-1],2,function(x){mean(x)-2*sd(x)})
+# outp = NULL
+# for (i in 2:ncol(material2)) {
+#   tmp = material2[,i]
+#   tmp_v = rep(0,length(tmp))
+#   tmp_v[which(tmp > upper[i-1] | tmp < lower[i-1])] = 1
+#   outp = c(outp,tmp_v)
+# }
+# 
+# com_material2 = material2 %>% gather(key = CoA, value = val, CoA_4:CoA_11)
+# com_material2$CoA = factor(com_material2$CoA,
+#                       level = paste0("CoA_",c(4:6,11)))
+# com_material2$out = outp
+# 
+# out_table = table(which(com_material2$out != 0) %% nrow(material2))
+# out_table
+# sort(out_table)[77:length(out_table)]
+
+```
+
+
+
+```{r}
+# corMat = cor(material2[,-1])
+# corrplot.mixed(corMat)
+
+```
+
+
+
+```{r}
+# p = list(NULL)
+# flag = 0
+# for (i in 2:ncol(material2)) {
+#   for (j in 2:ncol(material2)) {
+#     if(i < j){
+#       flag = flag + 1
+#       tmp =
+#         plot_ellipse(material2,material2[,i],material2[,j],size=0.7)
+#       tmp = tmp + xlab(names(material2)[i])+ylab(names(material2)[j])+
+#             theme(legend.position = "none")
+#       print(tmp)
+#       p[[flag]] = ggplotGrob(tmp)
+#     }
+#   }
+# }
+# 
+# grid.arrange(grobs=p, ncol=2)
+# tmp = arrangeGrob(grobs=p, ncol=2)
+# ggsave(tmp,filename=paste0("material2_CoA_pair",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+
+
+```
+
+
+```{r}
+# sp = ggplot(data=com_material2,aes(x=批號,y=val))+
+#       geom_point(aes(color=as.factor(out)),size=1)+
+#       facet_wrap(CoA~ ., scales = "free")+
+#       theme_bw()
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#                theme(strip.text.x = element_text(size = 6))
+# 
+# tmp
+# ggsave(tmp,filename=paste0("material2",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",height=5,width=8)
+
+```
+
+
+
+```{r}
+# out_table2 = data.frame(sort(out_table,decreasing=T))
+# rep_num2 = NULL
+# for(num in 1:nrow(out_table2)){
+#   rep_num2 = c(rep_num2,rep(as.numeric(out_table2$Var1[num]),out_table2$Freq[num]))
+# }
+# 
+# material2_COA = NULL
+# for (num in 1:nrow(out_table2)) {
+#   tmp = com_material2[which(com_material2$批號 == out_table2$Var1[num]),]
+#   material2_COA = c(material2_COA,as.factor(tmp[which(tmp$out == 1),2]))
+# }
+# 
+# out_table2_plt = data.frame(num = as.factor(levels(out_table2$Var1)[rep_num2]),
+#                             CoA = levels(com_material2$CoA)[material2_COA],
+#                             count=rep(1,length(rep_num2)))
+# 
+# out_table2_plt$num = factor(out_table2_plt$num,levels(out_table2$Var1))
+```
+
+
+
+```{r}
+# tmp = ggplot(data=out_table2_plt, aes(x=fct_rev(fct_infreq((num))), y=count)) +
+#   geom_bar(stat="identity", aes(fill=CoA)) + 
+#   ggtitle("Materia2 barplot")+
+#   coord_flip() +
+#   xlab("批號") +
+#   theme_bw()
+# 
+# tmp =tmp + theme(axis.text.x = element_text(size=12, face="bold", color = "black"), 
+#             axis.text.y = element_text(size=20, face="bold", color = "black"))+
+#     scale_y_continuous(breaks=c(0,1,2)) 
+# tmp
+# ggsave(tmp,filename=paste0("material2_批號",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+```
+
+
+
+
+```{r}
+# material3 = case2_clean[[5]]
+# index3 = as.numeric(as.matrix(material3[,-1]))
+# index3 = ifelse(is.na(index3),"NA","NNA")
+# 
+# material3_NA_1 = na.omit(material3[,c(1,2)])
+# material3_NA_2 = na.omit(material3[,c(1,14)])
+# material3_NA_3 = na.omit(material3[,c(1,24)])
+```
+
+
+
+```{r}
+# detect = function(df){
+#   upper = mean(df)+2*sd(df)
+#   lower = mean(df)-2*sd(df)
+#   tmp_v = rep(0,length(df))
+#   tmp_v[which(df > upper | df < lower)] = 1
+#   outp = tmp_v
+#   return(outp)
+# }
+# 
+# material3_NA_1 = cbind(material3_NA_1,out=detect(material3_NA_1[,2]))
+# material3_NA_2 = cbind(material3_NA_2,out=detect(material3_NA_2[,2]))
+# material3_NA_3 = cbind(material3_NA_3,out=detect(material3_NA_3[,2]))
+# 
+# 
+# material3_NA_index1 = material3_NA_1$批號[which(material3_NA_1$out != 0)]
+# material3_NA_index2 = material3_NA_2$批號[which(material3_NA_2$out != 0)]
+# material3_NA_index3 = material3_NA_3$批號[which(material3_NA_3$out != 0)]
+# 
+# 
+# out_table3_NA_plt = data.frame(num=c(material3_NA_index1,material3_NA_index2,
+#                                   material3_NA_index3),
+#                             CoA = rep(c("CoA_4","CoA_23","CoA_34"),times=c(3,15,4)),
+#                             count = rep(1,22)
+#                             )
+```
+
+
+
+```{r}
+# na = NULL
+# for (i in 1:ncol(material3)) {
+#   if(length(table(is.na(material3[,i])))==2) {
+#     na = c(na,i)
+#   }
+# }
+# material3 = material3[,-na]
+# # material3$批號 = as.factor(material3$批號)
+# upper = apply(material3[,-1],2,function(x){mean(x)+2*sd(x)})
+# lower = apply(material3[,-1],2,function(x){mean(x)-2*sd(x)})
+# outp = NULL
+# for (i in 2:ncol(material3)) {
+#   tmp = material3[,i]
+#   tmp_v = rep(0,length(tmp))
+#   tmp_v[which(tmp > upper[i-1] | tmp < lower[i-1])] = 1
+#   outp = c(outp,tmp_v)
+# }
+# 
+# com_material3 = material3 %>% gather(key = CoA, value = val, CoA_6:CoA_35)
+# com_material3$CoA = factor(com_material3$CoA,
+#                       level = paste0("CoA_",c(6,9,11:15,18,20:22,24:32,35)))
+# com_material3$out = outp
+# 
+# out_table = table(which(com_material3$out != 0) %% nrow(material3))
+# names(out_table)[1] = nrow(material3)
+# sort(out_table)[77:length(out_table)]
+
+```
+
+
+
+```{r}
+# material3_NNA = Case2_Final[[5]]
+# 
+# upper = apply(material3_NNA[,-1],2,function(x){mean(x)+2*sd(x)})
+# lower = apply(material3_NNA[,-1],2,function(x){mean(x)-2*sd(x)})
+# outp = NULL
+# for (i in 2:ncol(material3_NNA)) {
+#   tmp = material3_NNA[,i]
+#   tmp_v = rep(0,length(tmp))
+#   tmp_v[which(tmp > upper[i-1] | tmp < lower[i-1])] = 1
+#   outp = c(outp,tmp_v)
+# }
+# 
+# com_material3_NNA = material3_NNA %>% gather(key = CoA, value = val, CoA_4:CoA_35)
+# com_material3_NNA$CoA = factor(com_material3_NNA$CoA,
+#                       level = paste0("CoA_",c(4,6,9,11:15,18,20:35)))
+# com_material3_NNA$out = outp
+# com_material3_NNA$NAornot = index3
+# out_table_NA = table(which(com_material3_NNA$out != 0) %% nrow(material3_NNA))
+# names(out_table_NA)[1] = nrow(material3_NNA)
+# sort(out_table_NA)[77:length(out_table_NA)]
+
+```
+
+
+
+```{r}
+# corMat = cor(material3_NNA[,-1])
+# corrplot.mixed(corMat)
+# 
+# corMat = cor(material3_NNA[,16:20])
+# corrplot.mixed(corMat)
+
+
+```
+
+
+
+```{r}
+# flag = 0
+# for (i in 2:ncol(material3_NNA)) {
+#   for (j in 2:ncol(material3_NNA)) {
+#     if(i < j){
+#       flag = flag + 1
+#       tmp =
+#         plot_ellipse(material3_NNA,material3_NNA[,i],material3_NNA[,j],size=1.5)
+#       tmp = tmp + xlab(names(material3_NNA)[i])+ylab(names(material3_NNA)[j])
+#       print(tmp)
+#     }
+#   }
+# }
+
+
+# p = list(NULL)
+# index = data.frame(f=c(16,16,16,17,17,17,18,18,19),
+#                    s=c(17,18,19,18,19,20,19,20,20))
+# 
+# for (i in 1:9) {
+#   tmp = plot_ellipse(material3_NNA,material3_NNA[,index$f[i]],material3_NNA[,index$s[i]],
+#                      size=0.5)
+#         tmp = tmp + xlab(names(material3_NNA)[index$f[i]])+ylab(names(material3_NNA)[index$s[i]])+
+#             theme(legend.position = "none")
+#   # print(tmp)
+#   p[[i]] = ggplotGrob(tmp)
+# }
+# 
+# grid.arrange(grobs=p, ncol=3)
+# tmp = arrangeGrob(grobs=p, ncol=3)
+# ggsave(tmp,filename=paste0("material3_CoA_pair",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+```
+
+
+
+```{r}
+# sp = ggplot(data=com_material3,aes(x=批號,y=val))+
+#       geom_point(aes(color=as.factor(out)),size=0.5)+
+#       facet_wrap(CoA~ ., scales = "free")+
+#       theme_bw()
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#       theme(strip.text.x = element_text(size = 6))
+#     
+# tmp
+# ggsave(tmp,filename=paste0("material3",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",height=6,width=10)
+```
+
+
+```{r}
+# p = list(NULL)
+# sp = ggplot(data=material3_NA_1,aes(x=批號,y=CoA_4))+
+#       geom_point(aes(color=as.factor(out)),size=1)+
+#       theme_bw()+ylab("")+ggtitle("CoA_4")
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#       theme(legend.position = "none")
+# p[[1]] = ggplotGrob(tmp)
+# 
+# sp = ggplot(data=material3_NA_2,aes(x=批號,y=CoA_23))+
+#       geom_point(aes(color=as.factor(out)),size=1)+
+#       theme_bw()+ylab("")+ggtitle("CoA_23")
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#       theme(legend.position = "none")
+# p[[2]] = ggplotGrob(tmp)
+# 
+# sp = ggplot(data=material3_NA_3,aes(x=批號,y=CoA_34))+
+#       geom_point(aes(color=as.factor(out)),size=1)+
+#       theme_bw()+ylab("")+ggtitle("CoA_34")
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#       theme(legend.position = "none")
+# p[[3]] = ggplotGrob(tmp)
+# 
+# grid.arrange(grobs=p, ncol=1)
+# tmp = arrangeGrob(grobs=p, ncol=1)
+
+# ggsave(tmp,filename=paste0("material3_NA_t",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+```
+
+
+```{r}
+# sp = ggplot(data=com_material3_NNA,aes(x=批號,y=val))+
+#       geom_point(aes(color=as.factor(out),shape=as.factor(NAornot)),size=0.5)+
+#       facet_wrap(CoA~ ., scales = "free")+
+#       theme_bw()
+#       # +theme(legend.position = "none")
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#            scale_shape_manual(name="NA",labels = c("yes", "no"),values=c(3, 16))+
+#            theme(strip.text.x = element_text(size = 6))
+#     
+# tmp
+# ggsave(tmp,filename=paste0("material3_NNA",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",height=6,width=10)
+
+```
+
+
+```{r}
+# out_table3 = data.frame(sort(out_table,decreasing=T))
+# rep_num3 = NULL
+# for(num in 1:nrow(out_table3)){
+#   rep_num3 = c(rep_num3,rep(as.numeric(out_table3$Var1[num]),out_table3$Freq[num]))
+# }
+# 
+# material3_COA = NULL
+# for (num in 1:nrow(out_table3)) {
+#   tmp = com_material3[which(com_material3$批號 == out_table3$Var1[num]),]
+#   material3_COA = c(material3_COA,as.factor(tmp[which(tmp$out == 1),2]))
+# }
+# 
+# out_table3_plt = data.frame(num = as.factor(levels(out_table3$Var1)[rep_num3]),
+#                             CoA = levels(com_material3$CoA)[material3_COA],
+#                             count=rep(1,length(rep_num3)))
+# 
+# out_table3_plt$num = factor(out_table3_plt$num,levels(out_table3$Var1))
+```
+
+```{r}
+# out_table3_both_plt = rbind(out_table3_plt,out_table3_NA_plt)
+```
+
+
+
+
+
+```{r}
+# tmp = ggplot(data=out_table3_plt, aes(x=fct_rev(fct_infreq((num))), y=count)) +
+#   geom_bar(stat="identity", aes(fill=CoA)) + 
+#   ggtitle("Materia3 barplot")+
+#   coord_flip() +
+#   xlab("批號") +
+#   theme_bw()
+# 
+# tmpall = tmp + theme(axis.text.x = element_text(size=10, face="bold", color = "black"), 
+#             axis.text.y = element_text(size=1, face="bold", color = "black"))+
+#     scale_y_continuous(breaks=c(0,1,2,3,4,5,6)) 
+# tmpall
+# ggsave(tmpall,filename=paste0("material3_批號",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+
+# tmp + theme(axis.text.x = element_text(size=10, face="bold", color = "black"), 
+#             axis.text.y = element_text(size=20, face="bold", color = "black"))+
+#     scale_y_continuous(breaks=c(0,1,2,3,4,5,6)) + 
+#     scale_x_discrete(limits = out_table3$Var1[10:1])
+
+
+```
+
+
+
+
+
+```{r}
+# material4 = case2_clean[[6]]
+# index4 = as.numeric(as.matrix(material4[,-1]))
+# index4 = ifelse(is.na(index4),"NA","NNA")
+
+```
+
+
+```{r}
+# material4 = case2_clean[[6]]
+# na = NULL
+# for (i in 1:ncol(material4)) {
+#   if(length(table(is.na(material4[,i])))==2) {
+#     na = c(na,i)
+#   }
+# }
+# material4 = material4[,-na]
+# material2$批號 = as.factor(material2$批號)
+# upper = apply(material4[,-1],2,function(x){mean(x)+2*sd(x)})
+# lower = apply(material4[,-1],2,function(x){mean(x)-2*sd(x)})
+# outp = NULL
+# for (i in 2:ncol(material4)) {
+#   tmp = material4[,i]
+#   tmp_v = rep(0,length(tmp))
+#   tmp_v[which(tmp > upper[i-1] | tmp < lower[i-1])] = 1
+#   outp = c(outp,tmp_v)
+# }
+# 
+# com_material4 = material4 %>% gather(key = CoA, value = val, CoA_4:CoA_25)
+# com_material4$CoA = factor(com_material4$CoA,
+#                       level = paste0("CoA_",c(4,7,9,10,13,15:18,24:25)))
+# com_material4$out = outp
+# 
+# out_table = table(which(com_material4$out != 0) %% nrow(material4))
+# 
+# sort(out_table)[182:length(out_table)]
+
+```
+
+
+
+
+```{r}
+# corMat = cor(material4[,-1])
+# corrplot.mixed(corMat)
+
+```
+
+
+
+```{r}
+# flag = 0
+# for (i in 2:ncol(material4)) {
+#   for (j in 2:ncol(material4)) {
+#     if(i < j){
+#       flag = flag + 1
+#       tmp =
+#         plot_ellipse(material4,material4[,i],material4[,j],size=1.5)
+#       tmp = tmp + xlab(names(material4)[i])+ylab(names(material4)[j])
+#       print(tmp)
+#     }
+#   }
+# }
+# 
+# p = list(NULL)
+# index = data.frame(f=c(2,2,11,11),
+#                    s=c(7,12,11,12))
+# 
+# for (i in 1:4) {
+#   tmp = plot_ellipse(material4,material4[,index$f[i]],material4[,index$s[i]],
+#                      size=0.5)
+#         tmp = tmp + xlab(names(material4)[index$f[i]])+ylab(names(material4)[index$s[i]])+
+#             theme(legend.position = "none")
+#   print(tmp)
+#   p[[i]] = ggplotGrob(tmp)
+# }
+
+# grid.arrange(grobs=p, ncol=2)
+# tmp = arrangeGrob(grobs=p, ncol=2)
+# ggsave(tmp,filename=paste0("material3_CoA_pair",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+```
+
+
+
+```{r}
+# sp = ggplot(data=com_material4,aes(x=批號,y=val))+
+#       geom_point(aes(color=as.factor(out)),size=0.5)+
+#       facet_wrap(CoA~ ., scales = "free")+
+#       theme_bw()
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#                theme(strip.text.x = element_text(size = 6))
+# 
+# tmp
+# ggsave(tmp,filename=paste0("material4",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",width=8)
+```
+
+
+```{r}
+# out_table4 = data.frame(sort(out_table,decreasing=T))
+# rep_num4 = NULL
+# for(num in 1:nrow(out_table4)){
+#   rep_num4 = c(rep_num4,rep(as.numeric(out_table4$Var1[num]),out_table4$Freq[num]))
+# }
+# 
+# material4_COA = NULL
+# for (num in 1:nrow(out_table4)) {
+#   tmp = com_material4[which(com_material4$批號 == out_table4$Var1[num]),]
+#   material4_COA = c(material4_COA,as.factor(tmp[which(tmp$out == 1),2]))
+# }
+# 
+# out_table4_plt = data.frame(num = as.factor(levels(out_table4$Var1)[rep_num4]),
+#                             CoA = levels(com_material4$CoA)[material4_COA],
+#                             count=rep(1,length(rep_num4)))
+# 
+# out_table4_plt$num = factor(out_table4_plt$num,levels(out_table4$Var1))
+```
+
+
+```{r}
+# tmp = ggplot(data=out_table4_plt, aes(x=fct_rev(fct_infreq((num))), y=count)) +
+#   geom_bar(stat="identity", aes(fill=CoA)) + 
+#   ggtitle("Materia4 barplot")+
+#   coord_flip() +
+#   xlab("批號") +
+#   theme_bw()
+# 
+# tmpall = tmp + theme(axis.text.x = element_text(size=10, face="bold", color = "black"), 
+#             axis.text.y = element_text(size=1, face="bold", color = "black"))+
+#     scale_y_continuous(breaks=c(0,1,2,3,4)) 
+# tmpall
+# # ggsave(tmpall,filename=paste0("material4_批號",".png"),
+# #        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+# 
+# 
+# tmp + theme(axis.text.x = element_text(size=10, face="bold", color = "black"), 
+#             axis.text.y = element_text(size=20, face="bold", color = "black"))+
+#     scale_y_continuous(breaks=c(0,1,2,3,4,5,6)) + 
+#     scale_x_discrete(limits = out_table4$Var1[10:1])
+
+```
+
+
+
+```{r}
+# material5 = case2_clean[[7]]
+# na = NULL
+# for (i in 1:ncol(material5)) {
+#   if(length(table(is.na(material5[,i])))==2) {
+#     na = c(na,i)
+#   }
+# }
+# material5 = material5[,-na]
+# material2$批號 = as.factor(material2$批號)
+# upper = apply(material5[,-1],2,function(x){mean(x)+2*sd(x)})
+# lower = apply(material5[,-1],2,function(x){mean(x)-2*sd(x)})
+# outp = NULL
+# for (i in 2:ncol(material5)) {
+#   tmp = material5[,i]
+#   tmp_v = rep(0,length(tmp))
+#   tmp_v[which(tmp > upper[i-1] | tmp < lower[i-1])] = 1
+#   outp = c(outp,tmp_v)
+# }
+# 
+# com_material5 = material5 %>% gather(key = CoA, value = val, CoA_1:CoA_5)
+# com_material5$CoA = factor(com_material5$CoA,
+#                       level = paste0("CoA_",c(1:3,5)))
+# com_material5$out = outp
+# 
+# out_table = table(which(com_material5$out != 0) %% nrow(material5))
+# out_table
+# sort(out_table)[77:length(out_table)]
+
+```
+
+
+
+```{r}
+# corMat = cor(material5[,-1])
+# corrplot.mixed(corMat)
+
+```
+
+
+
+```{r}
+# p = list(NULL)
+# flag = 0
+# for (i in 2:ncol(material5)) {
+#   for (j in 2:ncol(material5)) {
+#     if(i < j){
+#       flag = flag + 1
+#       tmp =
+#         plot_ellipse(material5,material5[,i],material5[,j],size=0.5)
+#       tmp = tmp + xlab(names(material5)[i])+ylab(names(material5)[j])+
+#             theme(legend.position = "none")
+#       # print(tmp)
+#       p[[flag]] = ggplotGrob(tmp)
+#     }
+#   }
+# }
+# 
+# 
+# grid.arrange(grobs=p, ncol=2)
+# tmp = arrangeGrob(grobs=p, ncol=2)
+# ggsave(tmp,filename=paste0("material5_CoA_pair",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+
+
+```
+
+
+
+```{r}
+# sp = ggplot(data=com_material5,aes(x=批號,y=val))+
+#       geom_point(aes(color=as.factor(out)),size=1)+
+#       facet_wrap(CoA~ ., scales = "free")+
+#       theme_bw()
+# 
+# tmp = sp + scale_color_manual(name="Control",labels = c("IC", "OC"),
+#                               values=c("black", "red"))+
+#                theme(strip.text.x = element_text(size = 6))
+# 
+# tmp
+# ggsave(tmp,filename=paste0("material5",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+```
+
+
+
+```{r}
+# out_table5 = data.frame(sort(out_table,decreasing=T))
+# rep_num5 = NULL
+# for(num in 1:nrow(out_table5)){
+#   rep_num5 = c(rep_num5,rep(as.numeric(out_table5$Var1[num]),out_table5$Freq[num]))
+# }
+# 
+# material5_COA = NULL
+# for (num in 1:nrow(out_table5)) {
+#   tmp = com_material5[which(com_material5$批號 == out_table5$Var1[num]),]
+#   material5_COA = c(material5_COA,as.factor(tmp[which(tmp$out == 1),2]))
+# }
+# 
+# out_table5_plt = data.frame(num = as.factor(levels(out_table5$Var1)[rep_num5]),
+#                             CoA = levels(com_material5$CoA)[material5_COA],
+#                             count=rep(1,length(rep_num5)))
+# 
+# out_table5_plt$num = factor(out_table5_plt$num,levels(out_table5$Var1))
+```
+
+
+
+```{r}
+# tmp = ggplot(data=out_table5_plt, aes(x=fct_rev(fct_infreq((num))), y=count)) +
+#   geom_bar(stat="identity", aes(fill=CoA)) + 
+#   ggtitle("Materia5 barplot")+
+#   coord_flip() +
+#   xlab("批號") +
+#   theme_bw()
+# 
+# tmpall = tmp + theme(axis.text.x = element_text(size=10, face="bold", color = "black"), 
+#             axis.text.y = element_text(size=1, face="bold", color = "black"))+
+#     scale_y_continuous(breaks=c(0,1,2)) 
+# tmpall
+# ggsave(tmpall,filename=paste0("material5_批號",".png"),
+#        path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/")
+
+# tmp + theme(axis.text.x = element_text(size=10, face="bold", color = "black"), 
+#             axis.text.y = element_text(size=20, face="bold", color = "black"))+
+#     scale_y_continuous(breaks=c(0,1,2)) + 
+#     scale_x_discrete(limits = out_table5$Var1[10:1])
+
+```
+
+
+
+
+```{r}
+# load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/case2_clean.RData")
+# load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/Case2_Final.RData")
+# load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/isolate_Froest.RData")
+# load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/spc.RData")
+# # load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/hc.RData")
+# load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/hc_single.RData")
+# # load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/hc_new_method.RData")
+# # load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/Material3_hc.RData")
+# # load("C:/jacob/NTHUSTAT/Practicing Statistics/case2/rdata/Material5_hc.RData")
+# Case2_Final = sapply(Case2_Final, as.data.frame)
+# 
+# hc = hc_E
+# mspc = ab.batch_spc
+# iso_f = anomolous_sample
+```
+
+
+```{r}
+# all_anomial_num = list(NULL)
+# for (i in 1:5) {
+#   tmp = c(iso_f[[i]],mspc[[i]],hc[[i]])
+#   all_anomial_num[[i]] = tmp
+# }
+# 
+# 
+# all_anomial = list(NULL)
+# all_anomial_plot = list(NULL)
+# for (i in 1:5) {
+#   tmp1 = unique(all_anomial_num[[i]]) %in%  iso_f[[i]] 
+#   tmp2 = unique(all_anomial_num[[i]]) %in%  mspc[[i]] 
+#   tmp3 = unique(all_anomial_num[[i]]) %in%  hc[[i]]
+#   tmpdf = data.frame(num=unique(all_anomial_num[[i]]) , Iso_Forest=ifelse(tmp1==TRUE,1,0),
+#                      MSPC=ifelse(tmp2==TRUE,1,0),HC=ifelse(tmp3==TRUE,1,0) )
+#   all_anomial[[i]] = tmpdf
+#   tmpdf$total = apply(tmpdf[,2:4],1,sum)
+#   tmpdf$num = factor(tmpdf$num,levels=tmpdf$num[order(tmpdf$total,decreasing = T)])
+#   m = tmpdf %>% gather(key = method, value = out, Iso_Forest:HC)
+#   m$indexm = ifelse(m$out==1,paste0(m$method,"_Y"),paste0(m$method,"_N"))
+#   m$method_new = m$method
+#   m$method_new[which(m$total == 3)] = "both"
+#   m$count = 1
+#   all_anomial_plot[[i]] = m
+# }
+
+```
+
+
+
+
+```{r}
+# for (i in 1:5) {
+#   tmp = ggplot(all_anomial_plot[[i]], aes(method, fct_rev(fct_infreq((num))))) +
+#    geom_tile(aes(fill = as.factor(out)), colour = "white")+
+#    scale_x_discrete(position = "top",labels=c("HC"="Hierarchical",
+#                                               "Iso_Forest"="Isolation Forest","MSPC"))+
+#    xlab("")+ylab("")+
+#    theme(axis.text.x = element_text(size=12, face="bold", color = "black"), 
+#          axis.text.y = element_text(size=20, face="bold", color = "black"),
+#          legend.position = "none")+
+#   scale_fill_manual(values = c("0" = "gray", "1" = "#F8766D"))
+#   print(tmp)
+# }
+
+
+
+
+```
+
+
+```{r}
+# for (i in 1:5) {
+#   
+#   if(i==4){
+#     tmp = all_anomial_plot[[i]]
+#     tmp$num = as.numeric(as.vector(tmp$num))
+#     
+#     tmpp = ggplot(data=tmp,aes(x=num,xend=num,y=0,yend=out))+
+#       geom_segment(aes(col=method_new),size=0.4)+
+#       facet_grid(method~.)+
+#       theme_bw()+
+#       ggtitle(paste0("Material",i))+
+#       xlim(c(0,nrow(case2_clean[[i+2]])))+
+#       # scale_x_continuous(breaks= tmp$num)+
+#       scale_y_continuous(breaks= c(0,1))+
+#       xlab("批號")+
+#       ylab("")+
+#       scale_color_manual(breaks = c("both", "HC","Iso_Forest","MSPC"),
+#                            values=c("black", "#F8766D","#7CAE00","#00BFC4"))+
+#       theme(legend.position = "none")
+#     print(tmpp)
+#     # ggsave(tmpp,filename=paste0("summary_m",i,"_tp",".png"),
+#     #      path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",width=10)
+#   }else{
+#     tmp = all_anomial_plot[[i]]
+#     tmp$num = as.numeric(as.vector(tmp$num))
+#     
+#     tmpp = ggplot(data=tmp,aes(x=num,xend=num,y=0,yend=out))+
+#       geom_segment(aes(col=method_new),size=1)+
+#       facet_grid(method~.)+
+#       theme_bw()+
+#       ggtitle(paste0("Material",i))+
+#       xlim(c(0,nrow(case2_clean[[i+2]])))+
+#       # scale_x_continuous(breaks= tmp$num)+
+#       scale_y_continuous(breaks= c(0,1))+
+#       xlab("批號")+
+#       ylab("")+
+#       scale_color_manual(breaks = c("both", "HC","Iso_Forest","MSPC"),
+#                          values=c("black", "#F8766D","#7CAE00","#00BFC4"))+
+#       theme(legend.position = "none")
+#     print(tmpp)
+#     # ggsave(tmpp,filename=paste0("summary_m",i,"_tp",".png"),
+#     #      path="C:/jacob/NTHUSTAT/Practicing Statistics/case2/pic/",width=10)
+#     
+#   }
+#   
+#   
+# }
+
+
+```
