@@ -2,7 +2,7 @@
 
 https://benthamchang.github.io/Anomaly-Detection/Anomaly%20Detection%20Report.html
 
-## Data Mining Goal
+## Goal
 
 1. Detected anomolous output based on input materials via supervised learning under limited size of data.
 2. Detected anomolous output based on input materials via unsupervised learning.
